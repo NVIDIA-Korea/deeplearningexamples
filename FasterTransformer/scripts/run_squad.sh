@@ -11,18 +11,22 @@ OUTPUT_DIR=${8:-"output_squad"}
 HEAD_NUM=${8:-12} # ?
 SIZE_PER_HEAD=${9:-64} # ?
 
-DOCKER_IMAGE=${IMAGE:-"hanjack/bert:trt"}
+DOCKER_IMAGE=${IMAGE:-"hanjack/bert:cuda10.0-trt6"}
 CONTAINER_NAME=bert_trt
 
-BERT_BASE_DIR=/data/download/google_pretrained_weights/uncased_L-12_H-768_A-12
-BERT_LARGE_DIR=/data/download/google_pretrained_weights/uncased_L-24_H-1024_A-16
+# host mount path
+DATA_DIR=${DATA_DIR:-"/raid/dataset/bert_tf"}
+
+# container internal paths begin with '/data'
+SQUAD_DIR=${SQUAD_DIR:-"/data/download/squad/v${SQUAD_VERSION}/dev-v${SQUAD_VERSION}.json}
+BERT_BASE_DIR=${BERT_BASE_DIR:-"/data/download/google_pretrained_weights/uncased_L-12_H-768_A-12"}
+BERT_LARGE_DIR=${BERT_LARGE_DIR:-"/data/download/google_pretrained_weights/uncased_L-24_H-1024_A-16"}
 
 PRETRAINED_DIR=${BERT_BASE_DIR}
 if [ mode == "large" ]; then
     PRETRAINED_DIR=${BERT_LARGE_DIR}
 fi
 
-SQUAD_DIR=/data/download/squad/v${SQUAD_VERSION}/dev-v${SQUAD_VERSION}.json
 if [ "$SQUAD_VERSION" = "1.1" ] ; then
     version_2_with_negative="False"
 else

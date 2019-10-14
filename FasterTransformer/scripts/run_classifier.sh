@@ -8,7 +8,7 @@ SEQ_LEN=${5:-128}
 HEAD_NUM=${6:-12}
 SIZE_PER_HEAD=${7:-64}
 
-DOCKER_IMAGE=${IMAGE:-"hanjack/bert:trt"}
+DOCKER_IMAGE=${IMAGE:-"hanjack/bert:cuda10.0-trt6"}
 CONTAINER_NAME="bert_trt"
 
 if [ "${PRECISION}" == "half" ]; then
@@ -22,15 +22,18 @@ if { "${PRECISION}" == "16" }; then
     CHECKPOINT_PRECISION = "-fp16"
 fi
 
-BERT_BASE_DIR=/data/download/google_pretrained_weights/uncased_L-12_H-768_A-12
-BERT_LARGE_DIR=/data/download/google_pretrained_weights/uncased_L-24_H-1024_A-16
+# host data path
+DATA_DIR=${DATA_DIR:-"/raid/datasets/bert_tf"}
+
+# container interal paths begin with '/data'
+GLUE_DIR=${GLUE_DIR:-"/data/download"}
+BERT_BASE_DIR=${BERT_BASE_DIR:-"/data/download/google_pretrained_weights/uncased_L-12_H-768_A-12"}
+BERT_LARGE_DIR=${BERT_LARGE_DIR:-"/data/download/google_pretrained_weights/uncased_L-24_H-1024_A-16"}
 
 PRETRAINED_DIR=${BERT_BASE_DIR}
 if [ mode == "large" ]; then
     PRETRAINED_DIR=${BERT_LARGE_DIR}
 fi
-
-GLUE_DIR=/data/download
 
 # run container
 docker_cmd="docker run --rm --name ${CONTAINER_NAME} \
