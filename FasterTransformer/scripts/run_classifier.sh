@@ -7,6 +7,7 @@ BATCH_SIZE=${4:-1}
 SEQ_LEN=${5:-128}
 HEAD_NUM=${6:-12}
 SIZE_PER_HEAD=${7:-64}
+OUTPUT_DIR=${8:-"mrpc_output"}
 
 DOCKER_IMAGE=${IMAGE:-"hanjack/bert:cuda10.0-trt6"}
 CONTAINER_NAME="bert_trt"
@@ -54,7 +55,7 @@ infer_cmd="docker exec -ti ${CONTAINER_NAME}
                 --init_checkpoint=$PRETRAINED_DIR/bert_model.ckpt${CHECKPOINT_PRECISION}   \
                 --max_seq_length=${SEQ_LEN}   \
                 --eval_batch_size=${BATCH_SIZE}   \
-                --output_dir=mrpc_output   \
+                --output_dir=${OUTPUT_DIR}   \
                 --floatx=float${PRECISION} \
                 --use_fp16
                 --use_xla"
