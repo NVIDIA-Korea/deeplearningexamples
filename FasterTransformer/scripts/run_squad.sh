@@ -18,7 +18,7 @@ CONTAINER_NAME=bert_trt
 DATA_DIR=${DATA_DIR:-"/raid/dataset/bert_tf"}
 
 # container internal paths begin with '/data'
-SQUAD_DIR=${SQUAD_DIR:-"/data/download/squad/v${SQUAD_VERSION}/dev-v${SQUAD_VERSION}.json}
+SQUAD_DIR=${SQUAD_DIR:-"/data/download/squad/v${SQUAD_VERSION}/dev-v${SQUAD_VERSION}.json"}
 BERT_BASE_DIR=${BERT_BASE_DIR:-"/data/download/google_pretrained_weights/uncased_L-12_H-768_A-12"}
 BERT_LARGE_DIR=${BERT_LARGE_DIR:-"/data/download/google_pretrained_weights/uncased_L-24_H-1024_A-16"}
 
@@ -42,7 +42,7 @@ else
 fi
 
 CHECKPOINT_PRECISION=""
-if { "${PRECISION}" == "half" }; then
+if [ "${PRECISION}" == "half" ]; then
     CHECKPOINT_PRECISION = "-fp16"
 fi
 
@@ -76,7 +76,7 @@ infer_cmd="docker exec -ti \
             --predict_batch_size=${BATCH_SIZE} \
             --output_dir=${OUTPUT_DIR}   \
             --floatx=float${PRECISION} \
-            ${use_fp16} ${use_xla} \
+            ${use_fp16} \
             --version_2_with_negative=${version_2_with_negative}"
 
 eval_cmd="docker exec -ti \

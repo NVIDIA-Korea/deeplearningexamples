@@ -18,7 +18,7 @@ else
 fi
 
 CHECKPOINT_PRECISION=""
-if { "${PRECISION}" == "16" }; then
+if [ "${PRECISION}" == "16" ]; then
     CHECKPOINT_PRECISION = "-fp16"
 fi
 
