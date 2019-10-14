@@ -8,12 +8,12 @@ Faster Transformer is built on top of the CUDA and cuBLAS. It supports sequence 
 C++ API, TensorRT plugin, and TensorFlow OP wrapper are available. You can easily integrate this optimized transformer layer into your TensorFlow or other inference service codes that built in native C++ or TensorRT. In addition to codes that illustrate the API invocations, we also provide a simple end-to-end BERT TensorFlow inference sample.
 
 ## Environment requirements
-* CMake >= 3.8
+* CMake >= 3.12
 * CUDA 10.0
-* Python 2.7
+* Python 3.6
 * Tensorflow 1.13
-* TensorRT 5.1.5
-* The project is tested in nvidia/cuda 10.0-cudnn7-devel-ubuntu16.04 docker image. If you encountered compiling errors, try to compile with this docker image.
+* TensorRT 6.0.2
+* The project is tested in nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04 docker image. If you encountered compiling errors, try to compile with this docker image.
 
 ## Performance ##
 * CPU: Intel(R) Xeon(R) Gold 6132 CPU @ 2.60GHz
@@ -108,4 +108,27 @@ $ 6. sample/tensorRT/transformer_trt.cc: transformer layer tensorRT FP32/FP16 sa
 $ 7. tools/gemm_test/gemm_fp16.cu: loop over all cublas FP16 GEMM algorithms and pick the best one
 $ 8. tools/gemm_test/gemm_fp32.cu: loop over all cublas FP32 GEMM algorithms and pick the best one
 ```
+
+## How to build? (Docker)
+### Build container 
+```bash
+$ bash scripts/docker/build.sh <docker image name>
+```
+
+### Execute demo
+```bash
+# check point conversion. To operate Tensor Cores, you might want to convert checkpoint to FP16
+$ <DATA_DIR={checkpoint stored path}> bash scripts/run_skpt_convert.sh <input checkpoint path in the container> <output checkpoint path in the container>
+# run classifier(mrpc)
+$ GLUE_DIR=<dataset path in the host> \
+  BERT_BASE_DIR=<ckpt path for bert base> \
+  BERT_LARGE_DIR=<ckpt path for bert large> \
+  bash scripts/run_classifer.sh MRPC <model type> <precision> <batch_size> <seq_len> <head_num> <size_per_head> <output_dir>
+# run squad
+$ SQUAD_DIR=<dataset path in the host> \
+  BERT_BASE_DIR=<ckpt path for bert base> \
+  BERT_LARGE_DIR=<ckpt path for bert large> \
+  bash scripts/run_squad.sh <base/large> <batch_size> <precision> <seq_len> <doc_stride> <squad_version> <head_num> <size_per_head> <output_dir> 
+```
+
 
