@@ -20,21 +20,22 @@ from __future__ import division
 from __future__ import print_function
 
 
-from tensorflow.python.client import device_lib
+import os
+import sys
 import time
 import contextlib
-from tensorflow.python.client import timeline
-import os
-import tensorflow as tf
-import fast_infer_util as fiu
 import numpy as np
-import profile_util
-import sys
-import my_modeling
-bert_submodule = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bert')
+import tensorflow as tf
+from tensorflow.python.client import timeline, devide_lib
+
+# bert_submodule = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bert')
+bert_submodule = "/opt/FasterTransformer/sample/tensorflow_bert"
 sys.path.insert(0, bert_submodule)
+import profile_util
+import my_modeling
+# import optimization
 import run_classifier
-import optimization
+import fast_infer_util as fiu
 
 flags = tf.flags
 FLAGS = flags.FLAGS

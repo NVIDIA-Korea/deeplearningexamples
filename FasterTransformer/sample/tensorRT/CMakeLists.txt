@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.12)
 
 set(trt_files
   transformer_trt.cc
@@ -19,3 +19,7 @@ set(trt_files
 
 add_executable(transformer_trt ${trt_files})
 target_link_libraries(transformer_trt PRIVATE -lcublas -lcudart -lnvinfer fastertransformer ${CMAKE_THREAD_LIBS_INIT})
+
+INSTALL ( TARGETS transformer_trt
+  RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+)

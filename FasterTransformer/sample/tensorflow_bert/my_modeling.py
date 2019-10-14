@@ -29,6 +29,8 @@ import numpy as np
 import six
 import tensorflow as tf
 
+flags = tf.flags
+FLAGS = flags.FLAGS
 
 class BertConfig(object):
   """Configuration for `BertModel`."""
@@ -705,7 +707,7 @@ def attention_layer(from_tensor,
   # `attention_scores` = [B, N, F, T]
   attention_scores = tf.matmul(query_layer, key_layer, transpose_b=True)
   attention_scores = tf.multiply(attention_scores,
-                                 1.0 / math.sqrt(size_per_head))
+                                 1.0 / math.sqrt(float(size_per_head)))
 
   if attention_mask is not None:
     # `attention_mask` = [B, 1, F, T]
@@ -831,7 +833,7 @@ def transformer_model(input_tensor,
   for layer_idx in range(num_hidden_layers):
     with tf.variable_scope("layer_%d" % layer_idx):
       layer_input = prev_output
-
+      
       with tf.variable_scope("attention"):
         attention_heads = []
         with tf.variable_scope("self"):

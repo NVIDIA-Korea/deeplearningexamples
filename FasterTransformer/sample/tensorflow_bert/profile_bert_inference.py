@@ -73,9 +73,9 @@ def model_fn_builder(bert_config):
             bert_config, False, input_ids, input_mask, segment_ids)
 
         # # fetch mrpc logits for prediction
-        # num_labels = 2  # for mrpc
-        # _, _, fetches, _ = fiu.create_model(bert_config, False, input_ids, input_mask, segment_ids, label_ids,
-        # num_labels, False)
+        num_labels = 2  # for mrpc
+        _, _, fetches, _ = fiu.create_model(bert_config, False, input_ids, input_mask, segment_ids, label_ids,
+        num_labels, False)
 
         return fetches
 

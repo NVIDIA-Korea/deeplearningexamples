@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.12)
 
 set(tf_bert_transformer_files
   bert_transformer_op.cc
@@ -27,3 +27,9 @@ add_definitions(-DNDEBUG)
 add_library(tf_fastertransformer SHARED ${tf_bert_transformer_files})
 set_target_properties(tf_fastertransformer PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 target_link_libraries(tf_fastertransformer PRIVATE -lcublas -lcudart -ltensorflow_framework ${CMAKE_THREAD_LIBS_INIT})
+
+INSTALL ( TARGETS tf_fastertransformer
+  RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+  LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+)

@@ -45,8 +45,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import sys
+import os
 import tensorflow as tf
 
 # bert_submodule = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bert')
@@ -54,7 +54,7 @@ bert_submodule = "/opt/FasterTransformer/sample/tensorflow_bert"
 sys.path.insert(0, bert_submodule)
 import my_modeling
 import fast_infer_util as fiu
-import run_classifier as rc
+import run_squad
 
 flags = tf.flags
 FLAGS = flags.FLAGS
@@ -62,17 +62,13 @@ FLAGS = flags.FLAGS
 # replace transformer implementation
 my_modeling.transformer_model = fiu.transformer_model
 # replace the model to support fp16 data type
-rc.create_model = fiu.create_classifier_model
+run_squad.create_model = fiu.create_squad_model
 # replace the input function to drop remainderfile_based_input_fn_builder = fiu.file_based_input_fn_builder_drop
-main = rc.main
+main = run_squad.main
 
 if __name__ == "__main__":
-    flags.mark_flag_as_required("do_eval")
-    flags.mark_flag_as_required("data_dir")
-    flags.mark_flag_as_required("task_name")
     flags.mark_flag_as_required("vocab_file")
     flags.mark_flag_as_required("bert_config_file")
     flags.mark_flag_as_required("output_dir")
-    flags.DEFINE_string("floatx", None, "float32 or float16")
     flags.mark_flag_as_required("floatx")
     tf.app.run()

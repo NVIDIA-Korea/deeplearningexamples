@@ -21,8 +21,8 @@ import sys
 transformer_op_module = tf.load_op_library(os.path.join('./lib/libtf_fastertransformer.so'))
 
 if len(sys.argv) != 6:
-    print "python transformer_fp16.py batch_size num_layers seq_len head_num size_per_head"
-    print "e.g., python transformer_fp16.py 1 12 32 12 64"
+    print("python transformer_fp16.py batch_size num_layers seq_len head_num size_per_head")
+    print("e.g., python transformer_fp16.py 1 12 32 12 64")
     sys.exit(0)
 argumentList = sys.argv
 batch_size = int(sys.argv[1])
@@ -354,7 +354,7 @@ with tf.Session(config=config) as sess:
     idx = 0
     all_vars = tf.get_collection(Model_variables)
     for var in all_vars:
-      print (str(idx) + " " + str(var.name) + " " + str(var.shape)) + " " + str(var.dtype)
+      print((str(idx) + " " + str(var.name) + " " + str(var.shape)) + " " + str(var.dtype))
       idx = idx + 1
 
     params = all_vars
@@ -366,9 +366,9 @@ with tf.Session(config=config) as sess:
     print("cross_check " + str(np.allclose(np_val1, np_val2, atol = 1e-1)))
     print("max diff " + str(np.fabs(np_val1 - np_val2).max()))
     print("min diff " + str(np.fabs(np_val1 - np_val2).min()))
-    print np_val1
-    print " "
-    print np_val2
+    print(np_val1)
+    print(" ")
+    print(np_val2)
 
     ite = 500
     time_sum = 0

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 project(FasterTransformer LANGUAGES CXX CUDA)
 
 find_package(CUDA 10.0 REQUIRED)
@@ -39,8 +39,8 @@ list(APPEND CMAKE_MODULE_PATH ${CUDA_PATH}/lib64)
 find_package(CUDA REQUIRED)
 
 # setting compiler flags
-if (SM STREQUAL 70 OR
-    SM STREQUAL 75 OR
+if (SM STREQUAL 75 OR
+    SM STREQUAL 70 OR
     SM STREQUAL 61 OR
     SM STREQUAL 60)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_${SM},code=\\\"sm_${SM},compute_${SM}\\\" -rdc=true")
@@ -118,4 +118,3 @@ if(BUILD_TF)
       COMMAND cp ${PROJECT_SOURCE_DIR}/sample/tensorflow/*.py ${PROJECT_SOURCE_DIR}/build/
   )
 endif()
-

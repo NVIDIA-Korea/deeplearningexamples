@@ -36,7 +36,12 @@ int main(int argc, char* argv[])
     printf("Cannot write to file gemm_config.in\n");
     return 0;
   }
-
+  if(argc != 5)
+  {
+    printf("./gemm_fp32 batch_size seq_len head_num size_per_head\n");
+    printf("e.g., ./gemm_fp32 1 128 12 64\n");
+    return 0;
+  }
 
   const int batch_size = atoi(argv[1]);
   const int seq_len = atoi(argv[2]);
