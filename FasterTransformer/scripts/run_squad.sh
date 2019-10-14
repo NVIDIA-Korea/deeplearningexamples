@@ -3,13 +3,12 @@
 MODE=${1:-"base"} # base or large
 BATCH_SIZE=${2:-"1"}
 PRECISION=${3:-"half"}
-USE_XLA=${4:-"true"}
-SEQ_LEN=${5:-128}
-DOC_STRIDE=${6:-"128"}
-SQUAD_VERSION=${7:-"1.1"}
-OUTPUT_DIR=${8:-"output_squad"}
-HEAD_NUM=${8:-12} # ?
-SIZE_PER_HEAD=${9:-64} # ?
+SEQ_LEN=${4:-128}
+DOC_STRIDE=${5:-"128"}
+SQUAD_VERSION=${6:-"1.1"}
+HEAD_NUM=${7:-12} # ?
+SIZE_PER_HEAD=${8:-64} # ?
+OUTPUT_DIR=${9:-"output_squad"}
 
 DOCKER_IMAGE=${IMAGE:-"hanjack/bert:cuda10.0-trt6"}
 CONTAINER_NAME=bert_trt
