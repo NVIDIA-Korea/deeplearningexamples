@@ -28,6 +28,8 @@ import my_modeling
 import tokenization
 import six
 import tensorflow as tf
+from utils.create_squad_data import *
+from utils.utils import LogEvalRunHook, LogTrainRunHook
 
 flags = tf.flags
 
@@ -97,6 +99,8 @@ flags.DEFINE_integer("eval_batch_size", 1,
 
 flags.DEFINE_float("learning_rate", 5e-5, "The initial learning rate for Adam.")
 
+flags.DEFINE_bool("horovod", False, "Whether to use Horovod for multi-gpu runs")
+
 flags.DEFINE_float("num_train_epochs", 1.0,
                    "Total number of training epochs to perform.")
 
@@ -159,6 +163,11 @@ flags.DEFINE_bool(
 flags.DEFINE_float(
     "null_score_diff_threshold", 0.0,
     "If null_score - best_non_null is greater than the threshold predict null.")
+
+flags.DEFINE_bool("use_fp16", False, "Whether to use fp32 or fp16 arithmetic on GPU.")
+flags.DEFINE_bool("use_xla", False, "Whether to enable XLA JIT compilation.")
+flags.DEFINE_integer("num_eval_iterations", None,
+                     "How many eval iterations to run - performs inference on subset")
 
 
 class SquadExample(object):
@@ -229,255 +238,6 @@ class InputFeatures(object):
     self.start_position = start_position
     self.end_position = end_position
     self.is_impossible = is_impossible
-
-
-def read_squad_examples(input_file, is_training):
-  """Read a SQuAD json file into a list of SquadExample."""
-  with tf.gfile.Open(input_file, "r") as reader:
-    input_data = json.load(reader)["data"]
-
-  def is_whitespace(c):
-    if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
-      return True
-    return False
-
-  examples = []
-  for entry in input_data:
-    for paragraph in entry["paragraphs"]:
-      paragraph_text = paragraph["context"]
-      doc_tokens = []
-      char_to_word_offset = []
-      prev_is_whitespace = True
-      for c in paragraph_text:
-        if is_whitespace(c):
-          prev_is_whitespace = True
-        else:
-          if prev_is_whitespace:
-            doc_tokens.append(c)
-          else:
-            doc_tokens[-1] += c
-          prev_is_whitespace = False
-        char_to_word_offset.append(len(doc_tokens) - 1)
-
-      for qa in paragraph["qas"]:
-        qas_id = qa["id"]
-        question_text = qa["question"]
-        start_position = None
-        end_position = None
-        orig_answer_text = None
-        is_impossible = False
-        if is_training:
-
-          if FLAGS.version_2_with_negative:
-            is_impossible = qa["is_impossible"]
-          if (len(qa["answers"]) != 1) and (not is_impossible):
-            raise ValueError(
-                "For training, each question should have exactly 1 answer.")
-          if not is_impossible:
-            answer = qa["answers"][0]
-            orig_answer_text = answer["text"]
-            answer_offset = answer["answer_start"]
-            answer_length = len(orig_answer_text)
-            start_position = char_to_word_offset[answer_offset]
-            end_position = char_to_word_offset[answer_offset + answer_length -
-                                               1]
-            # Only add answers where the text can be exactly recovered from the
-            # document. If this CAN'T happen it's likely due to weird Unicode
-            # stuff so we will just skip the example.
-            #
-            # Note that this means for training mode, every example is NOT
-            # guaranteed to be preserved.
-            actual_text = " ".join(
-                doc_tokens[start_position:(end_position + 1)])
-            cleaned_answer_text = " ".join(
-                tokenization.whitespace_tokenize(orig_answer_text))
-            if actual_text.find(cleaned_answer_text) == -1:
-              tf.logging.warning("Could not find answer: '%s' vs. '%s'",
-                                 actual_text, cleaned_answer_text)
-              continue
-          else:
-            start_position = -1
-            end_position = -1
-            orig_answer_text = ""
-
-        example = SquadExample(
-            qas_id=qas_id,
-            question_text=question_text,
-            doc_tokens=doc_tokens,
-            orig_answer_text=orig_answer_text,
-            start_position=start_position,
-            end_position=end_position,
-            is_impossible=is_impossible)
-        examples.append(example)
-
-  return examples
-
-
-def convert_examples_to_features(examples, tokenizer, max_seq_length,
-                                 doc_stride, max_query_length, is_training,
-                                 output_fn):
-  """Loads a data file into a list of `InputBatch`s."""
-
-  unique_id = 1000000000
-
-  for (example_index, example) in enumerate(examples):
-    query_tokens = tokenizer.tokenize(example.question_text)
-
-    if len(query_tokens) > max_query_length:
-      query_tokens = query_tokens[0:max_query_length]
-
-    tok_to_orig_index = []
-    orig_to_tok_index = []
-    all_doc_tokens = []
-    for (i, token) in enumerate(example.doc_tokens):
-      orig_to_tok_index.append(len(all_doc_tokens))
-      sub_tokens = tokenizer.tokenize(token)
-      for sub_token in sub_tokens:
-        tok_to_orig_index.append(i)
-        all_doc_tokens.append(sub_token)
-
-    tok_start_position = None
-    tok_end_position = None
-    if is_training and example.is_impossible:
-      tok_start_position = -1
-      tok_end_position = -1
-    if is_training and not example.is_impossible:
-      tok_start_position = orig_to_tok_index[example.start_position]
-      if example.end_position < len(example.doc_tokens) - 1:
-        tok_end_position = orig_to_tok_index[example.end_position + 1] - 1
-      else:
-        tok_end_position = len(all_doc_tokens) - 1
-      (tok_start_position, tok_end_position) = _improve_answer_span(
-          all_doc_tokens, tok_start_position, tok_end_position, tokenizer,
-          example.orig_answer_text)
-
-    # The -3 accounts for [CLS], [SEP] and [SEP]
-    max_tokens_for_doc = max_seq_length - len(query_tokens) - 3
-
-    # We can have documents that are longer than the maximum sequence length.
-    # To deal with this we do a sliding window approach, where we take chunks
-    # of the up to our max length with a stride of `doc_stride`.
-    _DocSpan = collections.namedtuple(  # pylint: disable=invalid-name
-        "DocSpan", ["start", "length"])
-    doc_spans = []
-    start_offset = 0
-    while start_offset < len(all_doc_tokens):
-      length = len(all_doc_tokens) - start_offset
-      if length > max_tokens_for_doc:
-        length = max_tokens_for_doc
-      doc_spans.append(_DocSpan(start=start_offset, length=length))
-      if start_offset + length == len(all_doc_tokens):
-        break
-      start_offset += min(length, doc_stride)
-
-    for (doc_span_index, doc_span) in enumerate(doc_spans):
-      tokens = []
-      token_to_orig_map = {}
-      token_is_max_context = {}
-      segment_ids = []
-      tokens.append("[CLS]")
-      segment_ids.append(0)
-      for token in query_tokens:
-        tokens.append(token)
-        segment_ids.append(0)
-      tokens.append("[SEP]")
-      segment_ids.append(0)
-
-      for i in range(doc_span.length):
-        split_token_index = doc_span.start + i
-        token_to_orig_map[len(tokens)] = tok_to_orig_index[split_token_index]
-
-        is_max_context = _check_is_max_context(doc_spans, doc_span_index,
-                                               split_token_index)
-        token_is_max_context[len(tokens)] = is_max_context
-        tokens.append(all_doc_tokens[split_token_index])
-        segment_ids.append(1)
-      tokens.append("[SEP]")
-      segment_ids.append(1)
-
-      input_ids = tokenizer.convert_tokens_to_ids(tokens)
-
-      # The mask has 1 for real tokens and 0 for padding tokens. Only real
-      # tokens are attended to.
-      input_mask = [1] * len(input_ids)
-
-      # Zero-pad up to the sequence length.
-      while len(input_ids) < max_seq_length:
-        input_ids.append(0)
-        input_mask.append(0)
-        segment_ids.append(0)
-
-      assert len(input_ids) == max_seq_length
-      assert len(input_mask) == max_seq_length
-      assert len(segment_ids) == max_seq_length
-
-      start_position = None
-      end_position = None
-      if is_training and not example.is_impossible:
-        # For training, if our document chunk does not contain an annotation
-        # we throw it out, since there is nothing to predict.
-        doc_start = doc_span.start
-        doc_end = doc_span.start + doc_span.length - 1
-        out_of_span = False
-        if not (tok_start_position >= doc_start and
-                tok_end_position <= doc_end):
-          out_of_span = True
-        if out_of_span:
-          start_position = 0
-          end_position = 0
-        else:
-          doc_offset = len(query_tokens) + 2
-          start_position = tok_start_position - doc_start + doc_offset
-          end_position = tok_end_position - doc_start + doc_offset
-
-      if is_training and example.is_impossible:
-        start_position = 0
-        end_position = 0
-
-      if example_index < 20:
-        tf.logging.info("*** Example ***")
-        tf.logging.info("unique_id: %s" % (unique_id))
-        tf.logging.info("example_index: %s" % (example_index))
-        tf.logging.info("doc_span_index: %s" % (doc_span_index))
-        tf.logging.info("tokens: %s" % " ".join(
-            [tokenization.printable_text(x) for x in tokens]))
-        tf.logging.info("token_to_orig_map: %s" % " ".join(
-            ["%d:%d" % (x, y) for (x, y) in six.iteritems(token_to_orig_map)]))
-        tf.logging.info("token_is_max_context: %s" % " ".join([
-            "%d:%s" % (x, y) for (x, y) in six.iteritems(token_is_max_context)
-        ]))
-        tf.logging.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-        tf.logging.info(
-            "input_mask: %s" % " ".join([str(x) for x in input_mask]))
-        tf.logging.info(
-            "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-        if is_training and example.is_impossible:
-          tf.logging.info("impossible example")
-        if is_training and not example.is_impossible:
-          answer_text = " ".join(tokens[start_position:(end_position + 1)])
-          tf.logging.info("start_position: %d" % (start_position))
-          tf.logging.info("end_position: %d" % (end_position))
-          tf.logging.info(
-              "answer: %s" % (tokenization.printable_text(answer_text)))
-
-      feature = InputFeatures(
-          unique_id=unique_id,
-          example_index=example_index,
-          doc_span_index=doc_span_index,
-          tokens=tokens,
-          token_to_orig_map=token_to_orig_map,
-          token_is_max_context=token_is_max_context,
-          input_ids=input_ids,
-          input_mask=input_mask,
-          segment_ids=segment_ids,
-          start_position=start_position,
-          end_position=end_position,
-          is_impossible=example.is_impossible)
-
-      # Run callback
-      output_fn(feature)
-
-      unique_id += 1
 
 
 def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
@@ -595,8 +355,8 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
 
 
 def model_fn_builder(bert_config, init_checkpoint, learning_rate,
-                     num_train_steps, num_warmup_steps, use_tpu,
-                     use_one_hot_embeddings):
+                     num_train_steps, num_warmup_steps, 
+                     use_one_hot_embeddings=False):
   """Returns `model_fn` closure for TPUEstimator."""
 
   def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
@@ -628,15 +388,8 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
     if init_checkpoint:
       (assignment_map, initialized_variable_names
       ) = my_modeling.get_assignment_map_from_checkpoint(tvars, init_checkpoint)
-      if use_tpu:
 
-        def tpu_scaffold():
-          tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
-          return tf.train.Scaffold()
-
-        scaffold_fn = tpu_scaffold
-      else:
-        tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
+      tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
 
     tf.logging.info("**** Trainable Variables ****")
     for var in tvars:
@@ -669,19 +422,25 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
       train_op = optimization.create_optimizer(
           total_loss, learning_rate, num_train_steps, num_warmup_steps, use_tpu)
 
-      output_spec = tf.contrib.tpu.TPUEstimatorSpec(
+      # output_spec = tf.contrib.tpu.TPUEstimatorSpec(
+      #     mode=mode,
+      #     loss=total_loss,
+      #     train_op=train_op,
+      #     scaffold_fn=scaffold_fn)
+      output_spec = tf.estimator.EstimatorSpec(
           mode=mode,
           loss=total_loss,
-          train_op=train_op,
-          scaffold_fn=scaffold_fn)
+          train_op=train_op)
     elif mode == tf.estimator.ModeKeys.PREDICT:
       predictions = {
           "unique_ids": unique_ids,
           "start_logits": start_logits,
           "end_logits": end_logits,
       }
-      output_spec = tf.contrib.tpu.TPUEstimatorSpec(
-          mode=mode, predictions=predictions, scaffold_fn=scaffold_fn)
+      # output_spec = tf.contrib.tpu.TPUEstimatorSpec(
+      #     mode=mode, predictions=predictions, scaffold_fn=scaffold_fn)
+      output_spec = tf.estimator.EstimatorSpec(
+          mode=mode, predictions=predictions)
     else:
       raise ValueError(
           "Only TRAIN and PREDICT modes are supported: %s" % (mode))
@@ -691,7 +450,7 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
   return model_fn
 
 
-def input_fn_builder(input_file, seq_length, is_training, drop_remainder):
+def input_fn_builder(input_file, batch_size, seq_length, is_training, drop_remainder, hvd=None):
   """Creates an `input_fn` closure to be passed to TPUEstimator."""
 
   name_to_features = {
@@ -711,7 +470,7 @@ def input_fn_builder(input_file, seq_length, is_training, drop_remainder):
 
     # tf.Example only supports tf.int64, but the TPU only supports tf.int32.
     # So cast all int64 to int32.
-    for name in list(example.keys()):ㅠ
+    for name in list(example.keys()):
       t = example[name]
       if t.dtype == tf.int64:
         t = tf.to_int32(t)
@@ -721,15 +480,19 @@ def input_fn_builder(input_file, seq_length, is_training, drop_remainder):
 
   def input_fn(params):
     """The actual input function."""
-    batch_size = params["batch_size"]
-    print("INPUT_FN batch_size:", batch_size)
+    # batch_size = params["batch_size"]
+    # print("INPUT_FN batch_size:", batch_size)
 
     # For training, we want a lot of parallel reading and shuffling.
     # For eval, we want no shuffling and parallel reading doesn't matter.
-    d = tf.data.TFRecordDataset(input_file)
     if is_training:
-      d = d.repeat()
-      d = d.shuffle(buffer_size=100)
+      d = tf.data.TFRecordDataset(input_file)
+      if is_training:
+        d = d.repeat()
+        d = d.shuffle(buffer_size=100)
+        d = d.repeat()
+    else:
+        d = tf.data.TFRecordDataset(input_file)
 
     d = d.apply(
         tf.contrib.data.map_and_batch(
@@ -1143,28 +906,42 @@ def main(_):
   tokenizer = tokenization.FullTokenizer(
       vocab_file=FLAGS.vocab_file, do_lower_case=FLAGS.do_lower_case)
 
-  tpu_cluster_resolver = None
-  if FLAGS.use_tpu and FLAGS.tpu_name:
-    tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
-        FLAGS.tpu_name, zone=FLAGS.tpu_zone, project=FLAGS.gcp_project)
+  # tpu_cluster_resolver = None
+  # if FLAGS.use_tpu and FLAGS.tpu_name:
+  #   tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
+  #       FLAGS.tpu_name, zone=FLAGS.tpu_zone, project=FLAGS.gcp_project)
 
-  is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
-  run_config = tf.contrib.tpu.RunConfig(
-      cluster=tpu_cluster_resolver,
-      master=FLAGS.master,
-      model_dir=FLAGS.output_dir,
-      save_checkpoints_steps=FLAGS.save_checkpoints_steps,
-      tpu_config=tf.contrib.tpu.TPUConfig(
-          iterations_per_loop=FLAGS.iterations_per_loop,
-          num_shards=FLAGS.num_tpu_cores,
-          per_host_input_for_training=is_per_host))
+  # is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
+  # run_config = tf.contrib.tpu.RunConfig(
+  #     cluster=tpu_cluster_resolver,
+  #     master=FLAGS.master,
+  #     model_dir=FLAGS.output_dir,
+  #     save_checkpoints_steps=FLAGS.save_checkpoints_steps,
+  #     tpu_config=tf.contrib.tpu.TPUConfig(
+  #         iterations_per_loop=FLAGS.iterations_per_loop,
+  #         num_shards=FLAGS.num_tpu_cores,
+  #         per_host_input_for_training=is_per_host))
+
+  master_process = True
+
+  config = tf.ConfigProto()
+  learning_rate = FLAGS.learning_rate
+
+  if FLAGS.use_xla:
+    config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
+  run_config = tf.estimator.RunConfig(
+      model_dir=FLAGS.output_dir if master_process else None,
+      session_config=config,
+      save_checkpoints_steps=FLAGS.save_checkpoints_steps if master_process else None,
+      keep_checkpoint_max=1)
 
   train_examples = None
   num_train_steps = None
   num_warmup_steps = None
   if FLAGS.do_train:
     train_examples = read_squad_examples(
-        input_file=FLAGS.train_file, is_training=True)
+        input_file=FLAGS.train_file, is_training=True,
+        version_2_with_negative=FLAGS.version_2_with_negative)
     num_train_steps = int(
         len(train_examples) / FLAGS.train_batch_size * FLAGS.num_train_epochs)
     num_warmup_steps = int(num_train_steps * FLAGS.warmup_proportion)
@@ -1174,23 +951,34 @@ def main(_):
     rng = random.Random(12345)
     rng.shuffle(train_examples)
 
-  model_fn = model_fn_builder(
-      bert_config=bert_config,
-      init_checkpoint=FLAGS.init_checkpoint,
-      learning_rate=FLAGS.learning_rate,
-      num_train_steps=num_train_steps,
-      num_warmup_steps=num_warmup_steps,
-      use_tpu=FLAGS.use_tpu,
-      use_one_hot_embeddings=FLAGS.use_tpu)
+  # model_fn = model_fn_builder(
+  #     bert_config=bert_config,
+  #     init_checkpoint=FLAGS.init_checkpoint,
+  #     learning_rate=learning_rate,
+  #     num_train_steps=num_train_steps,
+  #     num_warmup_steps=num_warmup_steps,
+  #     use_tpu=FLAGS.use_tpu,
+  #     use_one_hot_embeddings=FLAGS.use_tpu)
 
   # If TPU is not available, this will fall back to normal Estimator on CPU
   # or GPU.
-  estimator = tf.contrib.tpu.TPUEstimator(
-      use_tpu=FLAGS.use_tpu,
+  # estimator = tf.contrib.tpu.TPUEstimator(
+  #     use_tpu=FLAGS.use_tpu,
+  #     model_fn=model_fn,
+  #     config=run_config,
+  #     train_batch_size=FLAGS.train_batch_size,
+  #     predict_batch_size=FLAGS.predict_batch_size)
+
+  model_fn = model_fn_builder(
+      bert_config=bert_config,
+      init_checkpoint=FLAGS.init_checkpoint,
+      learning_rate=learning_rate,
+      num_train_steps=num_train_steps,
+      num_warmup_steps=num_warmup_steps)
+
+  estimator = tf.estimator.Estimator(
       model_fn=model_fn,
-      config=run_config,
-      train_batch_size=FLAGS.train_batch_size,
-      predict_batch_size=FLAGS.predict_batch_size)
+      config=run_config)
 
   if FLAGS.do_train:
     # We write to a temporary file to avoid storing very large constant tensors
@@ -1213,18 +1001,29 @@ def main(_):
     tf.logging.info("  Num split examples = %d", train_writer.num_features)
     tf.logging.info("  Batch size = %d", FLAGS.train_batch_size)
     tf.logging.info("  Num steps = %d", num_train_steps)
+    tf.logging.info("  LR = %f", learning_rate)
     del train_examples
 
     train_input_fn = input_fn_builder(
         input_file=train_writer.filename,
+        batch_size=FLAGS.train_batch_size,
         seq_length=FLAGS.max_seq_length,
         is_training=True,
-        drop_remainder=True)
+        drop_remainder=True,
+        hvd=None if not FLAGS.horovod else hvd)
     estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
 
-  if FLAGS.do_predict:
+  # if FLAGS.export_trtis and master_process:
+  #   export_model(estimator, FLAGS.output_dir, FLAGS.init_checkpoint)
+
+  if FLAGS.do_predict and master_process:
     eval_examples = read_squad_examples(
-        input_file=FLAGS.predict_file, is_training=False)
+        input_file=FLAGS.predict_file, is_training=False,
+        version_2_with_negative=FLAGS.version_2_with_negative)
+
+    # Perform evaluation on subset, useful for profiling
+    if FLAGS.num_eval_iterations is not None:
+        eval_examples = eval_examples[:FLAGS.num_eval_iterations*FLAGS.predict_batch_size]
 
     eval_writer = FeatureWriter(
         filename=os.path.join(FLAGS.output_dir, "eval.tf_record"),
@@ -1242,7 +1041,8 @@ def main(_):
         doc_stride=FLAGS.doc_stride,
         max_query_length=FLAGS.max_query_length,
         is_training=False,
-        output_fn=append_feature)
+        output_fn=append_feature,
+        verbose_logging=FLAGS.verbose_logging)
     eval_writer.close()
 
     tf.logging.info("***** Running predictions *****")
@@ -1254,16 +1054,16 @@ def main(_):
 
     predict_input_fn = input_fn_builder(
         input_file=eval_writer.filename,
+        batch_size=FLAGS.predict_batch_size,
         seq_length=FLAGS.max_seq_length,
         is_training=False,
         drop_remainder=False)
 
-    # If running eval on the TPU, you will need to specify the number of
-    # steps.
     all_results = []
-    t = time.time()
+    eval_hooks = [LogEvalRunHook(FLAGS.predict_batch_size)]
+    eval_start_time = time.time()
     for result in estimator.predict(
-        predict_input_fn, yield_single_examples=True):
+        predict_input_fn, yield_single_examples=True, hooks=eval_hooks):
       if len(all_results) % 1000 == 0:
         tf.logging.info("Processing example: %d" % (len(all_results)))
       unique_id = int(result["unique_ids"])
@@ -1274,8 +1074,41 @@ def main(_):
               unique_id=unique_id,
               start_logits=start_logits,
               end_logits=end_logits))
-    elapsed = time.time() - t
-    print("inference finished, time used:{},average {} per sample".format(elapsed, elapsed/len(all_results)))
+    
+    eval_time_elased = time.time() - eval_start_time
+    eval_time_wo_overhead = eval_hooks[-1].total_time
+
+    time_list = eval_hooks[-1].time_list
+    time_list.sort()
+    num_sentences = (eval_hooks[-1].count - eval_hooks[-1].skipped) * FLAGS.predict_batch_size
+
+    avg = np.mean(time_list)
+    cf_50 = max(time_list[:int(len(time_list) * 0.50)])
+    cf_90 = max(time_list[:int(len(time_list) * 0.90)])
+    cf_95 = max(time_list[:int(len(time_list) * 0.95)])
+    cf_99 = max(time_list[:int(len(time_list) * 0.99)])
+    cf_100 = max(time_list[:int(len(time_list) * 1)])
+    ss_sentences_per_second = num_sentences * 1.0 / eval_time_wo_overhead
+
+    tf.logging.info("-----------------------------")
+    tf.logging.info("Total Inference Time = %0.2f for Sentences = %d", eval_time_elapsed,
+                    eval_hooks[-1].count * FLAGS.predict_batch_size)
+    tf.logging.info("Total Inference Time W/O Overhead = %0.2f for Sentences = %d", eval_time_wo_overhead,
+                    (eval_hooks[-1].count - eval_hooks[-1].skipped) * FLAGS.predict_batch_size)
+    tf.logging.info("Summary Inference Statistics")
+    tf.logging.info("Batch size = %d", FLAGS.predict_batch_size)
+    tf.logging.info("Sequence Length = %d", FLAGS.max_seq_length)
+    tf.logging.info("Precision = %s", "fp16" if FLAGS.use_fp16 else "fp32")
+    tf.logging.info("Latency Confidence Level 50 (ms) = %0.2f", cf_50 * 1000)
+    tf.logging.info("Latency Confidence Level 90 (ms) = %0.2f", cf_90 * 1000)
+    tf.logging.info("Latency Confidence Level 95 (ms) = %0.2f", cf_95 * 1000)
+    tf.logging.info("Latency Confidence Level 99 (ms) = %0.2f", cf_99 * 1000)
+    tf.logging.info("Latency Confidence Level 100 (ms) = %0.2f", cf_100 * 1000)
+    tf.logging.info("Latency Average (ms) = %0.2f", avg * 1000)
+    tf.logging.info("Throughput Average (sentences/sec) = %0.2f", ss_sentences_per_second)
+    tf.logging.info("-----------------------------")
+
+    # print("inference finished, time used:{},average {} per sample".format(elapsed, elapsed/len(all_results)))
     output_prediction_file = os.path.join(FLAGS.output_dir, "predictions.json")
     output_nbest_file = os.path.join(FLAGS.output_dir, "nbest_predictions.json")
     output_null_log_odds_file = os.path.join(FLAGS.output_dir, "null_odds.json")
@@ -1289,7 +1122,6 @@ def main(_):
 if __name__ == "__main__":
   flags.mark_flag_as_required("vocab_file")
   flags.mark_flag_as_required("floatx")
-  flags.mark_flag_as_required("use_fasterTF")
   flags.mark_flag_as_required("bert_config_file")
   flags.mark_flag_as_required("output_dir")
   tf.app.run()
