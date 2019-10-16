@@ -61,7 +61,7 @@ infer_cmd="docker exec -ti ${CONTAINER_NAME}
                 --use_xla"
 
 # terminates container
-finish_cmd="docker rm -f bert_trt"
+finish_cmd="docker rm -f ${CONTAINER_NAME}"
 
 echo $docker_cmd
 # $docker_cmd &

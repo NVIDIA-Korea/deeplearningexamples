@@ -11,13 +11,14 @@ SIZE_PER_HEAD=${8:-64} # ?
 OUTPUT_DIR=${9:-"output_squad"}
 
 DOCKER_IMAGE=${IMAGE:-"hanjack/bert:cuda10.0-trt6"}
-CONTAINER_NAME=bert_trt
+CONTAINER_NAME=${CONTAINER_NAME:-"bert_trt"}
+GPU_IDX=${GPU_IDX:-0}
 
 # host mount path
 DATA_DIR=${DATA_DIR:-"/raid/dataset/bert_tf"}
 
 # container internal paths begin with '/data'
-SQUAD_DIR=${SQUAD_DIR:-"/data/download/squad/v${SQUAD_VERSION}/dev-v${SQUAD_VERSION}.json"}
+SQUAD_DIR=${SQUAD_DIR:-"/data/download/squad/v${SQUAD_VERSION}"}
 BERT_BASE_DIR=${BERT_BASE_DIR:-"/data/download/google_pretrained_weights/uncased_L-12_H-768_A-12"}
 BERT_LARGE_DIR=${BERT_LARGE_DIR:-"/data/download/google_pretrained_weights/uncased_L-24_H-1024_A-16"}
 
@@ -32,29 +33,24 @@ else
     version_2_with_negative="True"
 fi
 
-use_fp16=""
-if [ PRECISION == "half" ] ; then
+if [ ${PRECISION} == "half" ] ; then
     echo "fp16 activated!"
-    use_fp16="--use_fp16"
+    PRECISION=16
 else
     PRECISION=32
 fi
 
 CHECKPOINT_PRECISION=""
-if [ "${PRECISION}" == "half" ]; then
-    CHECKPOINT_PRECISION = "-fp16"
-fi
-
-use_xla = ""
-if [ "$use_xla" = "true" ] ; then
-    echo "XLA activated"
-    use_xla = "--use_xla"
+if [ "${PRECISION}" == 16 ]; then
+    CHECKPOINT_PRECISION="-fp16"
 fi
 
 # run container
 docker_cmd="docker run --rm --name ${CONTAINER_NAME} \
     --net=host --ipc=host --uts=host --ulimit stack=67108864 --ulimit memlock=-1 \
+    -e NVIDIA_VISIBLE_DEVICES=${GPU_IDX} \
     -v /raid/datasets/bert_tf/:/data \
+    -v /raid/outputs:/${OUTPUT_DIR} \
     ${DOCKER_IMAGE} sleep infinity"
 
 # finding optimal gemm algorithm from the given attention size
@@ -69,31 +65,30 @@ infer_cmd="docker exec -ti \
             --bert_config_file=$PRETRAINED_DIR/bert_config.json   \
             --init_checkpoint=$PRETRAINED_DIR/bert_model.ckpt${CHECKPOINT_PRECISION}   \
             --do_predict = True \
-            --predict_file=$SQUAD_DIR   \
+            --predict_file=${SQUAD_DIR}/dev-v${SQUAD_VERSION}.json   \
             --max_seq_length=${SEQ_LEN}   \
             --doc_stride=${DOC_STRIDE} \
             --predict_batch_size=${BATCH_SIZE} \
             --output_dir=${OUTPUT_DIR}   \
             --floatx=float${PRECISION} \
-            ${use_fp16} \
             --version_2_with_negative=${version_2_with_negative}"
 
 eval_cmd="docker exec -ti \
         ${CONTAINER_NAME} \
-        python $SQUAD_DIR/evaluate-v${SQUAD_VERSION}.py ${SQUAD_DIR}/dev-v${SQUAD_VERSION}.json ${RESULTS_DIR}/predictions.json"
+        python $SQUAD_DIR/evaluate-v${SQUAD_VERSION}.py ${SQUAD_DIR}/dev-v${SQUAD_VERSION}.json ${OUTPUT_DIR}/predictions.json"
 
 # terminates container
-finish_cmd="docker rm -f bert_trt"
+finish_cmd="docker rm -f ${CONTAINER_NAME}"
 
 echo $docker_cmd
-# $docker_cmd &
-# sleep 5
+$docker_cmd &
+sleep 5
 echo $init_cmd
-# $init_cmd
+$init_cmd
 echo $infer_cmd
-# $infer_cmd
+$infer_cmd
 echo $eval_cmd
-# $eval_cmd
+$eval_cmd
 echo $finish_cmd
-# $finish_cmd
+$finish_cmd
 

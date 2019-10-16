@@ -39,10 +39,6 @@ flags.DEFINE_string(
     "The config json file corresponding to the pre-trained BERT model. "
     "This specifies the model architecture.")
 
-flags.DEFINE_bool(
-    "use_fasterTF", True,
-    "Whether to use faster transformer implement by nvidia-dev")
-
 flags.DEFINE_string("vocab_file", None,
                     "The vocabulary file that the BERT model was trained on.")
 
@@ -715,7 +711,7 @@ def input_fn_builder(input_file, seq_length, is_training, drop_remainder):
 
     # tf.Example only supports tf.int64, but the TPU only supports tf.int32.
     # So cast all int64 to int32.
-    for name in list(example.keys()):
+    for name in list(example.keys()):ㅠ
       t = example[name]
       if t.dtype == tf.int64:
         t = tf.to_int32(t)
@@ -726,6 +722,7 @@ def input_fn_builder(input_file, seq_length, is_training, drop_remainder):
   def input_fn(params):
     """The actual input function."""
     batch_size = params["batch_size"]
+    print("INPUT_FN batch_size:", batch_size)
 
     # For training, we want a lot of parallel reading and shuffling.
     # For eval, we want no shuffling and parallel reading doesn't matter.

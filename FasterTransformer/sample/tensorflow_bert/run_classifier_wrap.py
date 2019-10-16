@@ -49,7 +49,6 @@ import os
 import sys
 import tensorflow as tf
 
-# bert_submodule = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bert')
 bert_submodule = "/opt/FasterTransformer/sample/tensorflow_bert"
 sys.path.insert(0, bert_submodule)
 import my_modeling
