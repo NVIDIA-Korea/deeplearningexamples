@@ -19,7 +19,7 @@ import six
 from datetime import datetime
 import sys
 import time
-transformer_op_module = tf.load_op_library(os.path.join('./lib/libtf_fastertransformer.so'))
+transformer_op_module = tf.load_op_library(os.path.join('/usr/local/lib/libtf_fastertransformer.so'))
 if len(sys.argv) != 6:
     print "python transformer_fp32.py batch_size num_layers seq_len head_num size_per_head"
     print "e.g., python transformer_fp32.py 1 12 32 12 64"

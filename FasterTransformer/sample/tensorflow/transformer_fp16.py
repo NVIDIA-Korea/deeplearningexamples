@@ -18,7 +18,7 @@ import math
 import six
 from datetime import datetime
 import sys
-transformer_op_module = tf.load_op_library(os.path.join('./lib/libtf_fastertransformer.so'))
+transformer_op_module = tf.load_op_library(os.path.join('/usr/local/lib/libtf_fastertransformer.so'))
 
 if len(sys.argv) != 6:
     print("python transformer_fp16.py batch_size num_layers seq_len head_num size_per_head")
@@ -336,8 +336,8 @@ def transformer_own(input_tensor, params):
     out_tensor = transformer_single(in_tensor, params, layer_idx)
     in_tensor = out_tensor
   return in_tensor
-    
-output = transformer_model(input_tensor=from_tensor, 
+
+output = transformer_model(input_tensor=from_tensor,
   hidden_size = hidden_dim, num_attention_heads = head_num, attention_mask = attention_mask, num_hidden_layers = num_layers, do_return_all_layers=True)
 
 config = tf.ConfigProto()
@@ -347,7 +347,7 @@ with tf.Session(config=config) as sess:
 
     run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
     run_metadata = tf.RunMetadata()
-                 
+
     sess.run(output)
     Model_variables = tf.GraphKeys.GLOBAL_VARIABLES
 
