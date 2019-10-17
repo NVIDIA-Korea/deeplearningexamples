@@ -2,25 +2,27 @@
 
 TASK_NAME=${1:-"MRPC"}
 MODE=${2:-"base"} # base or large
-PRECISION=${3:-"half"}
-BATCH_SIZE=${4:-1}
+PRECISION=${3:-"fp16"}
+BATCH_SIZE=${4:-8}
 SEQ_LEN=${5:-128}
 HEAD_NUM=${6:-12}
 SIZE_PER_HEAD=${7:-64}
-OUTPUT_DIR=${8:-"mrpc_output"}
+OUTPUT_DIR=${8:-"/mrpc_output"}
 
-DOCKER_IMAGE=${IMAGE:-"hanjack/bert:cuda10.0-trt6"}
-CONTAINER_NAME="bert_trt"
+DOCKER_IMAGE=${IMAGE:-"hanjack/bert:cuda10.0-trt5"}
+CONTAINER_NAME=${CONTAINER_NAME:-"bert_trt"}
+GPU_IDX=${GPU_IDX:-0}
+DO_PROFILE=${PROFILE:-"0"}
+PROFILE_FILENAME=${PROFILE_FILENAME:-"${CONTAINER_NAME}_classifier_${MODE}_s${SEQ_LEN}_b${BATCH_SIZE}"}
 
-if [ "${PRECISION}" == "half" ]; then
-    PRECISION=16
-else
-    PRECISION=32
+use_fp16=""
+if [ "${PRECISION}" = "fp16" ] ; then
+        use_fp16="--use_fp16"
 fi
 
 CHECKPOINT_PRECISION=""
-if [ "${PRECISION}" == "16" ]; then
-    CHECKPOINT_PRECISION = "-fp16"
+if [ "${PRECISION}" == "fp16" ]; then
+    CHECKPOINT_PRECISION="-fp16"
 fi
 
 # host data path
@@ -39,15 +41,23 @@ fi
 # run container
 docker_cmd="docker run --rm --name ${CONTAINER_NAME} \
     --net=host --ipc=host --uts=host --ulimit stack=67108864 --ulimit memlock=-1 \
+    -e NVIDIA_VISIBLE_DEVICES=${GPU_IDX} \
     -v /raid/datasets/bert_tf/:/data \
+    -v /raid/outputs:/${OUTPUT_DIR} \
     ${DOCKER_IMAGE} sleep infinity"
 
 # finding optimal gemm algorithm from the given attention size
 init_cmd="docker exec -ti ${CONTAINER_NAME} \
-            gemm_fp${PRECISION} ${BATCH_SIZE} ${SEQ_LEN} ${HEAD_NUM} ${SIZE_PER_HEAD}"
+            gemm_${PRECISION} ${BATCH_SIZE} ${SEQ_LEN} ${HEAD_NUM} ${SIZE_PER_HEAD}"
+
+profile_cmd=""
+if [ ${DO_PROFILE} == 1 ]; then
+    profile_cmd="nsys profile -f true -t cuda,cudnn,cublas,nvtx -o ${PROFILE_FILENAME} "
+fi
 
 # do inference
-infer_cmd="docker exec -ti ${CONTAINER_NAME} 
+infer_cmd="docker exec -ti ${CONTAINER_NAME} \
+            ${profile_cmd} \
             python run_classifier.py   --task_name=${TASK_NAME}   --do_eval=True  \
                 --data_dir=$GLUE_DIR/${TASK_NAME}   \
                 --vocab_file=$PRETRAINED_DIR/vocab.txt   \
@@ -56,21 +66,22 @@ infer_cmd="docker exec -ti ${CONTAINER_NAME}
                 --max_seq_length=${SEQ_LEN}   \
                 --eval_batch_size=${BATCH_SIZE}   \
                 --output_dir=${OUTPUT_DIR}   \
-                --floatx=float${PRECISION} \
-                --use_fp16
-                --use_xla"
+                ${use_fp16} --use_xla"
 
 # terminates container
 finish_cmd="docker rm -f ${CONTAINER_NAME}"
 
 echo $docker_cmd
-# $docker_cmd &
-# sleep 5
+$docker_cmd &
+sleep 5
 echo $init_cmd
-# $init_cmd
+$init_cmd
 echo $infer_cmd
-# $infer_cmd
-echo $finish_cmd
-# $finish_cmd
+$infer_cmd
+if [ ${DO_PROFILE} == 1 ]; then
+    docker exec -ti ${CONTAINER_NAME} \
+        mv "${PROFILE_FILENAME}.qdrep" "${OUTPUT_DIR}/${PROFILE_FILENAME}.qdrep"
+fi
 
-# python ckpt_type_convert.py --init_checkpoint=mrpc_output/model.ckpt-343 --fp16_checkpoint=mrpc_output/fp16_model.ckpt
+echo $finish_cmd
+$finish_cmd

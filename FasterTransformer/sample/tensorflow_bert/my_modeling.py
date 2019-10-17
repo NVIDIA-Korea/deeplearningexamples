@@ -378,7 +378,7 @@ def layer_norm_and_dropout(input_tensor, dropout_prob, name=None):
 
 def create_initializer(initializer_range=0.02):
   """Creates a `truncated_normal_initializer` with the given range."""
-  return tf.truncated_normal_initializer(stddev=initializer_range, dtype=tf.flags.FLAGS.floatx)
+  return tf.truncated_normal_initializer(stddev=initializer_range, dtype=tf.float16 if FLAGS.use_fp16 else tf.float32)
 
 
 def embedding_lookup(input_ids,
@@ -413,7 +413,7 @@ def embedding_lookup(input_ids,
   embedding_table = tf.get_variable(
       name=word_embedding_name,
       shape=[vocab_size, embedding_size],
-      dtype=tf.flags.FLAGS.floatx,
+      dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
       initializer=create_initializer(initializer_range))
 
   flat_input_ids = tf.reshape(input_ids, [-1])
@@ -481,12 +481,12 @@ def embedding_postprocessor(input_tensor,
     token_type_table = tf.get_variable(
         name=token_type_embedding_name,
         shape=[token_type_vocab_size, width],
-        dtype=tf.flags.FLAGS.floatx,
+        dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
         initializer=create_initializer(initializer_range))
     # This vocab will be small so we always do one-hot here, since it is always
     # faster for a small vocabulary.
     flat_token_type_ids = tf.reshape(token_type_ids, [-1])
-    one_hot_ids = tf.one_hot(flat_token_type_ids, depth=token_type_vocab_size, dtype=tf.flags.FLAGS.floatx)
+    one_hot_ids = tf.one_hot(flat_token_type_ids, depth=token_type_vocab_size, dtype=tf.float16 if FLAGS.use_fp16 else tf.float32)
     token_type_embeddings = tf.matmul(one_hot_ids, token_type_table)
     token_type_embeddings = tf.reshape(token_type_embeddings,
                                        [batch_size, seq_length, width])
@@ -498,7 +498,7 @@ def embedding_postprocessor(input_tensor,
       full_position_embeddings = tf.get_variable(
           name=position_embedding_name,
           shape=[max_position_embeddings, width],
-          dtype=tf.flags.FLAGS.floatx,
+          dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
           initializer=create_initializer(initializer_range))
       # Since the position embedding table is a learned variable, we create it
       # using a (long) sequence length `max_position_embeddings`. The actual
@@ -546,7 +546,7 @@ def create_attention_mask_from_input_mask(from_tensor, to_mask):
   to_seq_length = to_shape[1]
 
   to_mask = tf.cast(
-      tf.reshape(to_mask, [batch_size, 1, to_seq_length]), tf.flags.FLAGS.floatx)
+      tf.reshape(to_mask, [batch_size, 1, to_seq_length]), tf.float16 if FLAGS.use_fp16 else tf.float32)
 
   # We don't assume that `from_tensor` is a mask (although it could be). We
   # don't actually care if we attend *from* padding tokens (only *to* padding)
@@ -554,7 +554,7 @@ def create_attention_mask_from_input_mask(from_tensor, to_mask):
   #
   # `broadcast_ones` = [batch_size, from_seq_length, 1]
   broadcast_ones = tf.ones(
-      shape=[batch_size, from_seq_length, 1], dtype=tf.flags.FLAGS.floatx)
+      shape=[batch_size, from_seq_length, 1], dtype=tf.float16 if FLAGS.use_fp16 else tf.float32)
 
   # Here we broadcast along two dimensions to create the mask.
   mask = broadcast_ones * to_mask
@@ -707,7 +707,7 @@ def attention_layer(from_tensor,
   # `attention_scores` = [B, N, F, T]
   attention_scores = tf.matmul(query_layer, key_layer, transpose_b=True)
   attention_scores = tf.multiply(attention_scores,
-                                 1.0 / math.sqrt(float(size_per_head)))
+                                 1.0 / math.sqrt(size_per_head))
 
   if attention_mask is not None:
     # `attention_mask` = [B, 1, F, T]
@@ -716,7 +716,7 @@ def attention_layer(from_tensor,
     # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
     # masked positions, this operation will create a tensor which is 0.0 for
     # positions we want to attend and -10000.0 for masked positions.
-    adder = (1.0 - tf.cast(attention_mask, tf.flags.FLAGS.floatx)) * -10000.0
+    adder = (1.0 - tf.cast(attention_mask, tf.float16 if FLAGS.use_fp16 else tf.float32)) * -10000.0
 
     # Since we are adding it to the raw scores before the softmax, this is
     # effectively the same as removing these entirely.

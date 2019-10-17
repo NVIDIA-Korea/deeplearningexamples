@@ -72,6 +72,6 @@ if __name__ == "__main__":
     flags.mark_flag_as_required("vocab_file")
     flags.mark_flag_as_required("bert_config_file")
     flags.mark_flag_as_required("output_dir")
-    flags.DEFINE_string("floatx", None, "float32 or float16")
-    flags.mark_flag_as_required("floatx")
+    # flags.DEFINE_string("floatx", None, "float32 or float16")
+    # flags.mark_flag_as_required("floatx")
     tf.app.run()

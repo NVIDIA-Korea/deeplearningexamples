@@ -248,7 +248,7 @@ def get_frozen_tftrt_model(bert_config, shape, num_labels, use_one_hot_embedding
         outputs=output_node_names, 
         max_batch_size=FLAGS.predict_batch_size,
         max_workspace_size_bytes=(4096 << 20) - 1000,
-        precision_mode = "FP16" if FLAGS.use_fp16 else "FP32",
+        precision_mode = tf.float16 if FLAGS.use_fp16 else tf.float32,
         minimum_segment_size=4,
         is_dynamic_op=True,
         maximum_cached_engines=1000
@@ -258,10 +258,10 @@ def get_frozen_tftrt_model(bert_config, shape, num_labels, use_one_hot_embedding
           num_nodes, '->', len(frozen_graph.node))
     print('TRT node count:',
           len([1 for n in frozen_graph.node if str(n.op) == 'TRTEngineOp']))
-    
+
     with tf.gfile.GFile("frozen_modelTRT.pb", "wb") as f:
-      f.write(frozen_graph.SerializeToString())      
-        
+      f.write(frozen_graph.SerializeToString())
+
   return frozen_graph
 
 

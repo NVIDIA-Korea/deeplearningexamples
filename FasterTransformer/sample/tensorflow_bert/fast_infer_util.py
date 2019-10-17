@@ -85,6 +85,7 @@ def file_based_input_fn_builder_drop(input_file, seq_length, is_training,
 def create_classifier_model(bert_config, is_training, input_ids, input_mask, segment_ids,
                  labels, num_labels, use_one_hot_embeddings):
   """Creates a classification model."""
+  print("create_classifer_model")
   model = BertModel(
       config=bert_config,
       is_training=is_training,
@@ -97,14 +98,24 @@ def create_classifier_model(bert_config, is_training, input_ids, input_mask, seg
 
   hidden_size = output_layer.shape[-1].value
 
+#   output_weights = tf.get_variable(
+#       "output_weights", [num_labels, hidden_size],
+#       dtype=tf.flags.FLAGS.floatx,
+#       initializer=tf.truncated_normal_initializer(stddev=0.02))
+
+#   output_bias = tf.get_variable(
+#       "output_bias", [num_labels],
+#       dtype=tf.flags.FLAGS.floatx,
+#       initializer=tf.zeros_initializer())
+
   output_weights = tf.get_variable(
       "output_weights", [num_labels, hidden_size],
-      dtype=tf.flags.FLAGS.floatx,
+      dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
       initializer=tf.truncated_normal_initializer(stddev=0.02))
 
   output_bias = tf.get_variable(
-      "output_bias", [num_labels], 
-      dtype=tf.flags.FLAGS.floatx,
+      "output_bias", [num_labels],
+      dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
       initializer=tf.zeros_initializer())
 
   with tf.variable_scope("loss"):
@@ -117,54 +128,67 @@ def create_classifier_model(bert_config, is_training, input_ids, input_mask, seg
     probabilities = tf.nn.softmax(logits, axis=-1)
     log_probs = tf.nn.log_softmax(logits, axis=-1)
 
-    one_hot_labels = tf.one_hot(labels, depth=num_labels, dtype=tf.flags.FLAGS.floatx)
+    one_hot_labels = tf.one_hot(labels, depth=num_labels, dtype=tf.float16 if FLAGS.use_fp16 else tf.float32)
 
     per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
     loss = tf.reduce_mean(per_example_loss)
 
     return (loss, per_example_loss, logits, probabilities)
 
-def create_squad_model(bert_config, is_training, input_ids, input_mask, segment_ids,
+def create_squad_model(bert_config, is_training, 
+                 input_ids, input_mask, segment_ids,
                  use_one_hot_embeddings):
-  """Creates a classification model."""
-  model = BertModel(
-      config=bert_config,
-      is_training=is_training,
-      input_ids=input_ids,
-      input_mask=input_mask,
-      token_type_ids=segment_ids,
-      use_one_hot_embeddings=use_one_hot_embeddings)
+    """Creates a squad model."""
+    model = BertModel(
+        config=bert_config,
+        is_training=is_training,
+        input_ids=input_ids,
+        input_mask=input_mask,
+        token_type_ids=segment_ids,
+        use_one_hot_embeddings=use_one_hot_embeddings)
 
-  final_hidden = model.get_sequence_output()
+    final_hidden = model.get_sequence_output()
 
-  final_hidden_shape = get_shape_list(final_hidden, expected_rank=3)
-  batch_size = final_hidden_shape[0]
-  seq_length = final_hidden_shape[1]
-  hidden_size = final_hidden_shape[2]
+    final_hidden_shape = get_shape_list(final_hidden, expected_rank=3)
+    batch_size = final_hidden_shape[0]
+    seq_length = final_hidden_shape[1]
+    hidden_size = final_hidden_shape[2]
 
-  output_weights = tf.get_variable(
-      "cls/squad/output_weights", [2, hidden_size],
-      dtype=tf.flags.FLAGS.floatx,
-      initializer=tf.truncated_normal_initializer(stddev=0.02))
+    # output_weights = tf.get_variable(
+    #     "cls/squad/output_weights", [2, hidden_size],
+    #     dtype=tf.flags.FLAGS.floatx,
+    #     initializer=tf.truncated_normal_initializer(stddev=0.02))
 
-  output_bias = tf.get_variable(
-      "cls/squad/output_bias", [2], 
-      dtype=tf.flags.FLAGS.floatx,
-      initializer=tf.zeros_initializer())
+    # output_bias = tf.get_variable(
+    #     "cls/squad/output_bias", [2], 
+    #     dtype=tf.flags.FLAGS.floatx,
+    #     initializer=tf.zeros_initializer())
 
-  final_hidden_matrix = tf.reshape(final_hidden,
+    tf.float16 if FLAGS.use_fp16 else tf.float32
+
+    output_weights = tf.get_variable(
+        "cls/squad/output_weights", [2, hidden_size],
+        dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
+        initializer=tf.truncated_normal_initializer(stddev=0.02))
+
+    output_bias = tf.get_variable(
+        "cls/squad/output_bias", [2], 
+        dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
+        initializer=tf.zeros_initializer())
+
+    final_hidden_matrix = tf.reshape(final_hidden,
                                    [batch_size * seq_length, hidden_size])
-  logits = tf.matmul(final_hidden_matrix, output_weights, transpose_b=True)
-  logits = tf.nn.bias_add(logits, output_bias)
+    logits = tf.matmul(final_hidden_matrix, output_weights, transpose_b=True)
+    logits = tf.nn.bias_add(logits, output_bias)
 
-  logits = tf.reshape(logits, [batch_size, seq_length, 2])
-  logits = tf.transpose(logits, [2, 0, 1])
+    logits = tf.reshape(logits, [batch_size, seq_length, 2])
+    logits = tf.transpose(logits, [2, 0, 1])
 
-  unstacked_logits = tf.unstack(logits, axis=0, name='unstack')
+    unstacked_logits = tf.unstack(logits, axis=0, name='unstack')
 
-  (start_logits, end_logits) = (unstacked_logits[0], unstacked_logits[1])
+    (start_logits, end_logits) = (unstacked_logits[0], unstacked_logits[1])
 
-  return (start_logits, end_logits)
+    return (start_logits, end_logits)
 
 def get_available_gpus():
     local_device_protos = device_lib.list_local_devices()
@@ -237,6 +261,9 @@ def transformer_model(input_tensor,
         batch_size = FLAGS.eval_batch_size
     if FLAGS.do_predict:
         batch_size = FLAGS.predict_batch_size
+
+    print("####### batch_size:", batch_size)
+    print("do_return_all_layers:", do_return_all_layers)
 
     # The Transformer performs sum residuals on all layers so the input needs
     # to be the same as the hidden size.
