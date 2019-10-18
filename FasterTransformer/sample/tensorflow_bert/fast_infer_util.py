@@ -262,9 +262,6 @@ def transformer_model(input_tensor,
     if FLAGS.do_predict:
         batch_size = FLAGS.predict_batch_size
 
-    print("####### batch_size:", batch_size)
-    print("do_return_all_layers:", do_return_all_layers)
-
     # The Transformer performs sum residuals on all layers so the input needs
     # to be the same as the hidden size.
     if input_width != hidden_size:
