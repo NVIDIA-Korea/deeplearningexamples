@@ -256,11 +256,11 @@ def transformer_model(input_tensor,
     input_width = input_shape[2]
 
     # transform batch_size to int32
-    batch_size = 1
+    _batch_size = 1
     if FLAGS.do_eval:
-        batch_size = FLAGS.eval_batch_size
+        _batch_size = FLAGS.eval_batch_size
     if FLAGS.do_predict:
-        batch_size = FLAGS.predict_batch_size
+        _batch_size = FLAGS.predict_batch_size
 
     # The Transformer performs sum residuals on all layers so the input needs
     # to be the same as the hidden size.
@@ -341,7 +341,7 @@ def transformer_model(input_tensor,
                 attention_mask,
                 trainable_vars[6], trainable_vars[7], trainable_vars[8], trainable_vars[9], trainable_vars[10], trainable_vars[11],
                 trainable_vars[12], trainable_vars[13], trainable_vars[14], trainable_vars[15],
-                batch_size=batch_size, from_seq_len=seq_length, to_seq_len=seq_length, head_num=num_attention_heads, size_per_head=attention_head_size)
+                batch_size=_batch_size, from_seq_len=seq_length, to_seq_len=seq_length, head_num=num_attention_heads, size_per_head=attention_head_size)
 
             prev_output = layer_output
             all_layer_outputs.append(layer_output)
