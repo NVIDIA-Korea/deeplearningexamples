@@ -6,7 +6,6 @@ cat <<EOF
 == BERT TensorRT Inference ==
 =============================
 
-NVIDIA Release ${NVIDIA_TENSORFLOW_VERSION} (build ${NVIDIA_BUILD_ID})
 TensorFlow Version ${TENSORFLOW_VERSION}
 
 Container image Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
