@@ -27,12 +27,12 @@ import my_modeling
 # import optimization
 import tokenization
 import six
+import numpy as np
 import tensorflow as tf
 from utils.create_squad_data import *
 from utils.utils import LogEvalRunHook, LogTrainRunHook
 
 flags = tf.flags
-
 FLAGS = flags.FLAGS
 
 ## Required parameters
@@ -43,8 +43,6 @@ flags.DEFINE_string(
 
 flags.DEFINE_string("vocab_file", None,
                     "The vocabulary file that the BERT model was trained on.")
-
-flags.DEFINE_string("floatx", None, "float32 or float16")
 
 flags.DEFINE_string(
     "output_dir", None,
@@ -94,10 +92,9 @@ flags.DEFINE_integer("train_batch_size", 32, "Total batch size for training.")
 flags.DEFINE_integer("predict_batch_size", 1,
                      "Total batch size for predictions.")
 
-flags.DEFINE_integer("eval_batch_size", 1,
-                     "Total batch size for predictions.")
-
 flags.DEFINE_float("learning_rate", 5e-5, "The initial learning rate for Adam.")
+
+flags.DEFINE_bool("use_fp16", False, "Whether to use fp32 or fp16 arithmetic on GPU.")
 
 flags.DEFINE_bool("horovod", False, "Whether to use Horovod for multi-gpu runs")
 
@@ -147,10 +144,6 @@ tf.flags.DEFINE_string(
 
 tf.flags.DEFINE_string("master", None, "[Optional] TensorFlow master URL.")
 
-flags.DEFINE_integer(
-    "num_tpu_cores", 8,
-    "Only used if `use_tpu` is True. Total number of TPU cores to use.")
-
 flags.DEFINE_bool(
     "verbose_logging", False,
     "If true, all of the warnings related to data processing will be printed. "
@@ -164,7 +157,6 @@ flags.DEFINE_float(
     "null_score_diff_threshold", 0.0,
     "If null_score - best_non_null is greater than the threshold predict null.")
 
-flags.DEFINE_bool("use_fp16", False, "Whether to use fp32 or fp16 arithmetic on GPU.")
 flags.DEFINE_bool("use_xla", False, "Whether to enable XLA JIT compilation.")
 flags.DEFINE_integer("num_eval_iterations", None,
                      "How many eval iterations to run - performs inference on subset")
@@ -210,34 +202,34 @@ class SquadExample(object):
     return s
 
 
-class InputFeatures(object):
-  """A single set of features of data."""
+# class InputFeatures(object):
+#   """A single set of features of data."""
 
-  def __init__(self,
-               unique_id,
-               example_index,
-               doc_span_index,
-               tokens,
-               token_to_orig_map,
-               token_is_max_context,
-               input_ids,
-               input_mask,
-               segment_ids,
-               start_position=None,
-               end_position=None,
-               is_impossible=None):
-    self.unique_id = unique_id
-    self.example_index = example_index
-    self.doc_span_index = doc_span_index
-    self.tokens = tokens
-    self.token_to_orig_map = token_to_orig_map
-    self.token_is_max_context = token_is_max_context
-    self.input_ids = input_ids
-    self.input_mask = input_mask
-    self.segment_ids = segment_ids
-    self.start_position = start_position
-    self.end_position = end_position
-    self.is_impossible = is_impossible
+#   def __init__(self,
+#                unique_id,
+#                example_index,
+#                doc_span_index,
+#                tokens,
+#                token_to_orig_map,
+#                token_is_max_context,
+#                input_ids,
+#                input_mask,
+#                segment_ids,
+#                start_position=None,
+#                end_position=None,
+#                is_impossible=None):
+#     self.unique_id = unique_id
+#     self.example_index = example_index
+#     self.doc_span_index = doc_span_index
+#     self.tokens = tokens
+#     self.token_to_orig_map = token_to_orig_map
+#     self.token_is_max_context = token_is_max_context
+#     self.input_ids = input_ids
+#     self.input_mask = input_mask
+#     self.segment_ids = segment_ids
+#     self.start_position = start_position
+#     self.end_position = end_position
+#     self.is_impossible = is_impossible
 
 
 def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
@@ -334,10 +326,10 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
 
   output_weights = tf.get_variable(
       "cls/squad/output_weights", [2, hidden_size],
-      initializer=tf.truncated_normal_initializer(stddev=0.02),dtype=tf.flags.FLAGS.floatx,)
+      initializer=tf.truncated_normal_initializer(stddev=0.02),dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,)
 
   output_bias = tf.get_variable(
-      "cls/squad/output_bias", [2], initializer=tf.zeros_initializer(),dtype=tf.flags.FLAGS.floatx,)
+      "cls/squad/output_bias", [2], initializer=tf.zeros_initializer(),dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,)
 
   final_hidden_matrix = tf.reshape(final_hidden,
                                    [batch_size * seq_length, hidden_size])
@@ -361,10 +353,10 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
 
   def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
     """The `model_fn` for TPUEstimator."""
-
-    tf.logging.info("*** Features ***")
-    for name in sorted(features.keys()):
-      tf.logging.info("  name = %s, shape = %s" % (name, features[name].shape))
+    if FLAGS.verbose_logging:
+      tf.logging.info("*** Features ***")
+      for name in sorted(features.keys()):
+        tf.logging.info("  name = %s, shape = %s" % (name, features[name].shape))
 
     unique_ids = features["unique_ids"]
     input_ids = features["input_ids"]
@@ -405,7 +397,7 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
 
       def compute_loss(logits, positions):
         one_hot_positions = tf.one_hot(
-            positions, depth=seq_length, dtype=tf.flags.FLAGS.floatx)
+            positions, depth=seq_length, dtype=tf.float16 if FLAGS.use_fp16 else tf.float32)
         log_probs = tf.nn.log_softmax(logits, axis=-1)
         loss = -tf.reduce_mean(
             tf.reduce_sum(one_hot_positions * log_probs, axis=-1))
@@ -1050,8 +1042,6 @@ def main(_):
     tf.logging.info("  Num split examples = %d", len(eval_features))
     tf.logging.info("  Batch size = %d", FLAGS.predict_batch_size)
 
-    all_results = []
-
     predict_input_fn = input_fn_builder(
         input_file=eval_writer.filename,
         batch_size=FLAGS.predict_batch_size,
@@ -1074,8 +1064,8 @@ def main(_):
               unique_id=unique_id,
               start_logits=start_logits,
               end_logits=end_logits))
-    
-    eval_time_elased = time.time() - eval_start_time
+
+    eval_time_elapsed = time.time() - eval_start_time
     eval_time_wo_overhead = eval_hooks[-1].total_time
 
     time_list = eval_hooks[-1].time_list
@@ -1108,7 +1098,7 @@ def main(_):
     tf.logging.info("Throughput Average (sentences/sec) = %0.2f", ss_sentences_per_second)
     tf.logging.info("-----------------------------")
 
-    # print("inference finished, time used:{},average {} per sample".format(elapsed, elapsed/len(all_results)))
+    print("inference finished, time used:{},average {} per sample".format(elapsed, elapsed/len(all_results)))
     output_prediction_file = os.path.join(FLAGS.output_dir, "predictions.json")
     output_nbest_file = os.path.join(FLAGS.output_dir, "nbest_predictions.json")
     output_null_log_odds_file = os.path.join(FLAGS.output_dir, "null_odds.json")
@@ -1121,7 +1111,6 @@ def main(_):
 
 if __name__ == "__main__":
   flags.mark_flag_as_required("vocab_file")
-  flags.mark_flag_as_required("floatx")
   flags.mark_flag_as_required("bert_config_file")
   flags.mark_flag_as_required("output_dir")
   tf.app.run()
