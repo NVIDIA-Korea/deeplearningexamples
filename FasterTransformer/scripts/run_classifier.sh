@@ -73,7 +73,7 @@ finish_cmd="docker rm -f ${CONTAINER_NAME}"
 
 echo $docker_cmd
 $docker_cmd &
-sleep 5
+sleep 2
 echo $init_cmd
 $init_cmd
 echo $infer_cmd
