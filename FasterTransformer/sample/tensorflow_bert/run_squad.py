@@ -250,11 +250,6 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
       train_op = optimization.create_optimizer(
           total_loss, learning_rate, num_train_steps, num_warmup_steps, use_tpu)
 
-      # output_spec = tf.contrib.tpu.TPUEstimatorSpec(
-      #     mode=mode,
-      #     loss=total_loss,
-      #     train_op=train_op,
-      #     scaffold_fn=scaffold_fn)
       output_spec = tf.estimator.EstimatorSpec(
           mode=mode,
           loss=total_loss,
@@ -265,8 +260,7 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
           "start_logits": start_logits,
           "end_logits": end_logits,
       }
-      # output_spec = tf.contrib.tpu.TPUEstimatorSpec(
-      #     mode=mode, predictions=predictions, scaffold_fn=scaffold_fn)
+      print("start_logits: ", start_logits)
       output_spec = tf.estimator.EstimatorSpec(
           mode=mode, predictions=predictions)
     else:
@@ -879,7 +873,7 @@ def main(_):
     tf.logging.info("Throughput Average (sentences/sec) = %0.2f", ss_sentences_per_second)
     tf.logging.info("-----------------------------")
 
-    print("inference finished, time used:{},average {} per sample".format(elapsed, elapsed/len(all_results)))
+    print("inference finished, time used:{},average {} per sample".format(eval_time_elapsed, eval_time_elapsed/len(all_results)))
     output_prediction_file = os.path.join(FLAGS.output_dir, "predictions.json")
     output_nbest_file = os.path.join(FLAGS.output_dir, "nbest_predictions.json")
     output_null_log_odds_file = os.path.join(FLAGS.output_dir, "null_odds.json")
