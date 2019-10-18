@@ -20,7 +20,9 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 10
 RUN wget -P /tmp/ https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz && \
     tar -xzf /tmp/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz --strip-components=1 -C /usr/local/ && \
     rm /tmp/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz
-RUN pip3 install tensorflow-gpu==${TENSORFLOW_VERSION}
+RUN pip3 install \
+    "numpy<1.17" \
+    "tensorflow-gpu==${TENSORFLOW_VERSION}"
 
 # Install faster XFMR
 WORKDIR /opt/FasterTransformer
