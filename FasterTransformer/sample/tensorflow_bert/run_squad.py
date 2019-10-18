@@ -122,26 +122,6 @@ flags.DEFINE_integer(
     "The maximum length of an answer that can be generated. This is needed "
     "because the start and end predictions are not conditioned on one another.")
 
-flags.DEFINE_bool("use_tpu", False, "Whether to use TPU or GPU/CPU.")
-
-tf.flags.DEFINE_string(
-    "tpu_name", None,
-    "The Cloud TPU to use for training. This should be either the name "
-    "used when creating the Cloud TPU, or a grpc://ip.address.of.tpu:8470 "
-    "url.")
-
-tf.flags.DEFINE_string(
-    "tpu_zone", None,
-    "[Optional] GCE zone where the Cloud TPU is located in. If not "
-    "specified, we will attempt to automatically detect the GCE project from "
-    "metadata.")
-
-tf.flags.DEFINE_string(
-    "gcp_project", None,
-    "[Optional] Project name for the Cloud TPU-enabled project. If not "
-    "specified, we will attempt to automatically detect the GCE project from "
-    "metadata.")
-
 tf.flags.DEFINE_string("master", None, "[Optional] TensorFlow master URL.")
 
 flags.DEFINE_bool(
@@ -160,150 +140,6 @@ flags.DEFINE_float(
 flags.DEFINE_bool("use_xla", False, "Whether to enable XLA JIT compilation.")
 flags.DEFINE_integer("num_eval_iterations", None,
                      "How many eval iterations to run - performs inference on subset")
-
-
-class SquadExample(object):
-  """A single training/test example for simple sequence classification.
-
-     For examples without an answer, the start and end position are -1.
-  """
-
-  def __init__(self,
-               qas_id,
-               question_text,
-               doc_tokens,
-               orig_answer_text=None,
-               start_position=None,
-               end_position=None,
-               is_impossible=False):
-    self.qas_id = qas_id
-    self.question_text = question_text
-    self.doc_tokens = doc_tokens
-    self.orig_answer_text = orig_answer_text
-    self.start_position = start_position
-    self.end_position = end_position
-    self.is_impossible = is_impossible
-
-  def __str__(self):
-    return self.__repr__()
-
-  def __repr__(self):
-    s = ""
-    s += "qas_id: %s" % (tokenization.printable_text(self.qas_id))
-    s += ", question_text: %s" % (
-        tokenization.printable_text(self.question_text))
-    s += ", doc_tokens: [%s]" % (" ".join(self.doc_tokens))
-    if self.start_position:
-      s += ", start_position: %d" % (self.start_position)
-    if self.start_position:
-      s += ", end_position: %d" % (self.end_position)
-    if self.start_position:
-      s += ", is_impossible: %r" % (self.is_impossible)
-    return s
-
-
-# class InputFeatures(object):
-#   """A single set of features of data."""
-
-#   def __init__(self,
-#                unique_id,
-#                example_index,
-#                doc_span_index,
-#                tokens,
-#                token_to_orig_map,
-#                token_is_max_context,
-#                input_ids,
-#                input_mask,
-#                segment_ids,
-#                start_position=None,
-#                end_position=None,
-#                is_impossible=None):
-#     self.unique_id = unique_id
-#     self.example_index = example_index
-#     self.doc_span_index = doc_span_index
-#     self.tokens = tokens
-#     self.token_to_orig_map = token_to_orig_map
-#     self.token_is_max_context = token_is_max_context
-#     self.input_ids = input_ids
-#     self.input_mask = input_mask
-#     self.segment_ids = segment_ids
-#     self.start_position = start_position
-#     self.end_position = end_position
-#     self.is_impossible = is_impossible
-
-
-def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
-                         orig_answer_text):
-  """Returns tokenized answer spans that better match the annotated answer."""
-
-  # The SQuAD annotations are character based. We first project them to
-  # whitespace-tokenized words. But then after WordPiece tokenization, we can
-  # often find a "better match". For example:
-  #
-  #   Question: What year was John Smith born?
-  #   Context: The leader was John Smith (1895-1943).
-  #   Answer: 1895
-  #
-  # The original whitespace-tokenized answer will be "(1895-1943).". However
-  # after tokenization, our tokens will be "( 1895 - 1943 ) .". So we can match
-  # the exact answer, 1895.
-  #
-  # However, this is not always possible. Consider the following:
-  #
-  #   Question: What country is the top exporter of electornics?
-  #   Context: The Japanese electronics industry is the lagest in the world.
-  #   Answer: Japan
-  #
-  # In this case, the annotator chose "Japan" as a character sub-span of
-  # the word "Japanese". Since our WordPiece tokenizer does not split
-  # "Japanese", we just use "Japanese" as the annotation. This is fairly rare
-  # in SQuAD, but does happen.
-  tok_answer_text = " ".join(tokenizer.tokenize(orig_answer_text))
-
-  for new_start in range(input_start, input_end + 1):
-    for new_end in range(input_end, new_start - 1, -1):
-      text_span = " ".join(doc_tokens[new_start:(new_end + 1)])
-      if text_span == tok_answer_text:
-        return (new_start, new_end)
-
-  return (input_start, input_end)
-
-
-def _check_is_max_context(doc_spans, cur_span_index, position):
-  """Check if this is the 'max context' doc span for the token."""
-
-  # Because of the sliding window approach taken to scoring documents, a single
-  # token can appear in multiple documents. E.g.
-  #  Doc: the man went to the store and bought a gallon of milk
-  #  Span A: the man went to the
-  #  Span B: to the store and bought
-  #  Span C: and bought a gallon of
-  #  ...
-  #
-  # Now the word 'bought' will have two scores from spans B and C. We only
-  # want to consider the score with "maximum context", which we define as
-  # the *minimum* of its left and right context (the *sum* of left and
-  # right context will always be the same, of course).
-  #
-  # In the example the maximum context for 'bought' would be span C since
-  # it has 1 left context and 3 right context, while span B has 4 left context
-  # and 0 right context.
-  best_score = None
-  best_span_index = None
-  for (span_index, doc_span) in enumerate(doc_spans):
-    end = doc_span.start + doc_span.length - 1
-    if position < doc_span.start:
-      continue
-    if position > end:
-      continue
-    num_left_context = position - doc_span.start
-    num_right_context = end - position
-    score = min(num_left_context, num_right_context) + 0.01 * doc_span.length
-    if best_score is None or score > best_score:
-      best_score = score
-      best_span_index = span_index
-
-  return cur_span_index == best_span_index
 
 
 def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
@@ -470,21 +306,18 @@ def input_fn_builder(input_file, batch_size, seq_length, is_training, drop_remai
 
     return example
 
-  def input_fn(params):
+  def input_fn():
     """The actual input function."""
-    # batch_size = params["batch_size"]
-    # print("INPUT_FN batch_size:", batch_size)
 
     # For training, we want a lot of parallel reading and shuffling.
     # For eval, we want no shuffling and parallel reading doesn't matter.
     if is_training:
       d = tf.data.TFRecordDataset(input_file)
-      if is_training:
-        d = d.repeat()
-        d = d.shuffle(buffer_size=100)
-        d = d.repeat()
+      d = d.apply(tf.data.experimental.ignore_errors())
+      d = d.shuffle(buffer_size=100)
+      d = d.repeat()
     else:
-        d = tf.data.TFRecordDataset(input_file)
+      d = tf.data.TFRecordDataset(input_file)
 
     d = d.apply(
         tf.contrib.data.map_and_batch(
@@ -817,42 +650,6 @@ def _compute_softmax(scores):
     probs.append(score / total_sum)
   return probs
 
-
-class FeatureWriter(object):
-  """Writes InputFeature to TF example file."""
-
-  def __init__(self, filename, is_training):
-    self.filename = filename
-    self.is_training = is_training
-    self.num_features = 0
-    self._writer = tf.python_io.TFRecordWriter(filename)
-
-  def process_feature(self, feature):
-    """Write a InputFeature to the TFRecordWriter as a tf.train.Example."""
-    self.num_features += 1
-
-    def create_int_feature(values):
-      feature = tf.train.Feature(
-          int64_list=tf.train.Int64List(value=list(values)))
-      return feature
-
-    features = collections.OrderedDict()
-    features["unique_ids"] = create_int_feature([feature.unique_id])
-    features["input_ids"] = create_int_feature(feature.input_ids)
-    features["input_mask"] = create_int_feature(feature.input_mask)
-    features["segment_ids"] = create_int_feature(feature.segment_ids)
-
-    if self.is_training:
-      features["start_positions"] = create_int_feature([feature.start_position])
-      features["end_positions"] = create_int_feature([feature.end_position])
-      impossible = 0
-      if feature.is_impossible:
-        impossible = 1
-      features["is_impossible"] = create_int_feature([impossible])
-
-    tf_example = tf.train.Example(features=tf.train.Features(feature=features))
-    self._writer.write(tf_example.SerializeToString())
-
   def close(self):
     self._writer.close()
 
@@ -897,22 +694,6 @@ def main(_):
 
   tokenizer = tokenization.FullTokenizer(
       vocab_file=FLAGS.vocab_file, do_lower_case=FLAGS.do_lower_case)
-
-  # tpu_cluster_resolver = None
-  # if FLAGS.use_tpu and FLAGS.tpu_name:
-  #   tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
-  #       FLAGS.tpu_name, zone=FLAGS.tpu_zone, project=FLAGS.gcp_project)
-
-  # is_per_host = tf.contrib.tpu.InputPipelineConfig.PER_HOST_V2
-  # run_config = tf.contrib.tpu.RunConfig(
-  #     cluster=tpu_cluster_resolver,
-  #     master=FLAGS.master,
-  #     model_dir=FLAGS.output_dir,
-  #     save_checkpoints_steps=FLAGS.save_checkpoints_steps,
-  #     tpu_config=tf.contrib.tpu.TPUConfig(
-  #         iterations_per_loop=FLAGS.iterations_per_loop,
-  #         num_shards=FLAGS.num_tpu_cores,
-  #         per_host_input_for_training=is_per_host))
 
   master_process = True
 

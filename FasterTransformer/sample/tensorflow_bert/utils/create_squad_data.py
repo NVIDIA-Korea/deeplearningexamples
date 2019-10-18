@@ -75,6 +75,7 @@ def extract_flags():
         "verbose_logging", False,
         "If true, all of the warnings related to data processing will be printed. "
         "A number of warnings are expected for a normal SQuAD evaluation.")
+        
     flags.mark_flag_as_required("train_file")
     flags.mark_flag_as_required("predict_file")
     flags.mark_flag_as_required("squad_dir")
@@ -301,7 +302,6 @@ def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
         return (new_start, new_end)
 
   return (input_start, input_end)
-
 
 def convert_examples_to_features(examples, tokenizer, max_seq_length,
                                  doc_stride, max_query_length, is_training,
