@@ -1,0 +1,56 @@
+FROM tensorflow:1.13 as tf
+
+FROM nvcr.io/nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04
+
+ENV PYVER=3.5.2
+ENV CMAKE_VERSION=3.12.4
+ENV CUDA_VERSION=10.0.130
+ENV TENSORFLOW_VERSION=1.13.1
+ENV TRT_VERSION=6.0.1
+ENV DEBIAN_FRONTEND=noninteractive
+
+
+# Install dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential checkinstall \
+    libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev liblzma-dev \
+    libnvinfer6=${TRT_VERSION}-1+cuda10.1 \
+    libnvinfer-dev=${TRT_VERSION}-1+cuda10.1 \
+    libnvinfer-plugin6=${TRT_VERSION}-1+cuda10.1 \
+    libnvinfer-plugin-dev=${TRT_VERSION}-1+cuda10.1 \
+    libnvparsers6=${TRT_VERSION}-1+cuda10.1 \
+    libnvparsers-dev=${TRT_VERSION}-1+cuda10.1 \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+RUN ln -fs /usr/share/zoneinfo/Asia/Seoul /etc/localtime && \
+    dpkg-reconfigure --frontend noninteractive tzdata
+RUN wget -P /tmp https://www.python.org/ftp/python/${PYVER}/Python-${PYVER}.tgz && \
+    tar xzvf /tmp/Python-${PYVER}.tgz && \
+    cd Python-${PYVER} && \
+    ./configure && make install -j 
+RUN update-alternatives --install /usr/local/bin/python python /usr/local/bin/python3 10
+RUN wget -P /tmp/ https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz && \
+    tar -xzf /tmp/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz --strip-components=1 -C /usr/local/ && \
+    rm /tmp/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz
+COPY --from=tf /tmp/pip/tensorflow_gpu-*.whl /tmp
+RUN pip3 install /tmp/tensorflow_gpu-*.whl && rm /tmp/tensorflow_gpu-*.whl
+
+# install FasterTransformer
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64/
+WORKDIR /opt/FasterTransformer
+COPY . .
+RUN mkdir -p build && \
+    cd build && \
+    cmake -DSM=70 \
+        -DCMAKE_BUILD_TYPE=Debug \
+        -DBUILD_TRT=ON -DTRT_PATH=/usr/lib/x86_64-linux-gnu/ \
+        -DBUILD_TF=ON  -DTF_PATH=/usr/local/lib/python3.5/dist-packages/tensorflow .. && \
+    make -j && \
+    make install
+RUN mkdir /workspace/FasterTransformer && \
+    mv /opt/FasterTransformer/sample/tensorflow_bert/run_classifier_wrap.py /workspace/FasterTransformer/run_classifier.py && \
+    mv /opt/FasterTransformer/sample/tensorflow_bert/run_squad_wrap.py      /workspace/FasterTransformer/run_squad.py && \
+    mv /opt/FasterTransformer/sample/tensorflow_bert/profile_bert_inference.py   /workspace/FasterTransformer/profile_bert_inference.py && \
+    mv /opt/FasterTransformer/sample/tensorflow_bert/ckpt_type_convert.py   /workspace/FasterTransformer/ckpt_type_convert.py
+
+WORKDIR /workspace/FasterTransformer

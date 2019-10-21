@@ -1,7 +1,7 @@
 #!/bin/bash
 # WARNING: Current Faster Transformer version shows error on CUDA 10.1
 
-CONT=${1:-"nvcr.io/nvidian/sae/jahan:bert_cuda10.1-trt5"}
+CONT=${1:-"hanjack/bert:bert_cuda10.1-trt5"}
 
 docker pull nvcr.io/nvidia/tensorflow:19.06-py3
 
