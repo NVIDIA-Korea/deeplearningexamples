@@ -98,16 +98,6 @@ def create_classifier_model(bert_config, is_training, input_ids, input_mask, seg
 
   hidden_size = output_layer.shape[-1].value
 
-#   output_weights = tf.get_variable(
-#       "output_weights", [num_labels, hidden_size],
-#       dtype=tf.flags.FLAGS.floatx,
-#       initializer=tf.truncated_normal_initializer(stddev=0.02))
-
-#   output_bias = tf.get_variable(
-#       "output_bias", [num_labels],
-#       dtype=tf.flags.FLAGS.floatx,
-#       initializer=tf.zeros_initializer())
-
   output_weights = tf.get_variable(
       "output_weights", [num_labels, hidden_size],
       dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
@@ -153,16 +143,6 @@ def create_squad_model(bert_config, is_training,
     batch_size = final_hidden_shape[0]
     seq_length = final_hidden_shape[1]
     hidden_size = final_hidden_shape[2]
-
-    # output_weights = tf.get_variable(
-    #     "cls/squad/output_weights", [2, hidden_size],
-    #     dtype=tf.flags.FLAGS.floatx,
-    #     initializer=tf.truncated_normal_initializer(stddev=0.02))
-
-    # output_bias = tf.get_variable(
-    #     "cls/squad/output_bias", [2], 
-    #     dtype=tf.flags.FLAGS.floatx,
-    #     initializer=tf.zeros_initializer())
 
     tf.float16 if FLAGS.use_fp16 else tf.float32
 

@@ -51,9 +51,9 @@ import tensorflow as tf
 
 bert_submodule = "/opt/FasterTransformer/sample/tensorflow_bert"
 sys.path.insert(0, bert_submodule)
-import my_modeling
-import fast_infer_util as fiu
 import run_classifier as rc
+import fast_infer_util as fiu
+import my_modeling
 
 flags = tf.flags
 FLAGS = flags.FLAGS
@@ -72,6 +72,4 @@ if __name__ == "__main__":
     flags.mark_flag_as_required("vocab_file")
     flags.mark_flag_as_required("bert_config_file")
     flags.mark_flag_as_required("output_dir")
-    # flags.DEFINE_string("floatx", None, "float32 or float16")
-    # flags.mark_flag_as_required("floatx")
     tf.app.run()

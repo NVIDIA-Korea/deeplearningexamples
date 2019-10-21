@@ -7,8 +7,9 @@ cat <<EOF
 =============================
 
 TensorFlow Version ${TENSORFLOW_VERSION}
+NVIDIA TensorRT ${TRT_VERSION} (c) 2016-2019, NVIDIA CORPORATION.  All rights reserved.
 
-Container image Copyright (c) 2019, NVIDIA CORPORATION.  All rights reserved.
+Container image (c) 2019, NVIDIA CORPORATION.  All rights reserved.
 Copyright 2017-2019 The TensorFlow Authors.  All rights reserved.
 
 Various files include modifications (c) NVIDIA CORPORATION.  All rights reserved.

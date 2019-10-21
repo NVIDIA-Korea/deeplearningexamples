@@ -8,11 +8,11 @@ Faster Transformer is built on top of the CUDA and cuBLAS. It supports sequence 
 C++ API, TensorRT plugin, and TensorFlow OP wrapper are available. You can easily integrate this optimized transformer layer into your TensorFlow or other inference service codes that built in native C++ or TensorRT. In addition to codes that illustrate the API invocations, we also provide a simple end-to-end BERT TensorFlow inference sample.
 
 ## Environment requirements
-* CMake >= 3.12
+* CMake >= 3.8
 * CUDA 10.0
 * Python 3.6
 * Tensorflow 1.13
-* TensorRT 6.0.2
+* TensorRT 5.1.5
 * The project is tested in nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04 docker image. If you encountered compiling errors, try to compile with this docker image.
 
 ## Performance ##
