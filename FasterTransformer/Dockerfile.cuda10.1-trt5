@@ -13,7 +13,7 @@ COPY . .
 RUN mkdir -p build && \
     cd build && \
     cmake -DSM=70 \
-        -DCMAKE_BUILD_TYPE=Debug \
+        -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_TRT=ON -DTRT_PATH=/usr/lib/x86_64-linux-gnu/ \
         -DBUILD_TF=ON  -DTF_PATH=/usr/local/lib/python3.5/dist-packages/tensorflow .. && \
     make -j && \
