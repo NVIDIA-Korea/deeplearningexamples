@@ -3,7 +3,7 @@
 MODE=${1:-"base"} # base or large
 BATCH_SIZE=${2:-"1"}
 PRECISION=${3:-"fp16"}
-SEQ_LEN=${4:-128}
+SEQ_LEN=${4:-"128"}
 DOC_STRIDE=${5:-"128"}
 SQUAD_VERSION=${6:-"1.1"}
 HEAD_NUM=${7:-12} # ?
@@ -15,6 +15,7 @@ GPU_IDX=${GPU_IDX:-0}
 CONTAINER_NAME=${CONTAINER_NAME:-"bert_trt_g${GPU_IDX}"}
 DO_PROFILE=${PROFILE:-"0"}
 PROFILE_FILENAME=${PROFILE_FILENAME:-"${CONTAINER_NAME}_squad_${MODE}_s${SEQ_LEN}_b${BATCH_SIZE}"}
+EVAL_ITER=${EVAL_ITER:-""}
 
 # host mount path
 DATA_DIR=${DATA_DIR:-"/raid/dataset/bert_tf"}
@@ -45,12 +46,17 @@ if [ "${PRECISION}" == "fp16" ]; then
     CHECKPOINT_PRECISION="-fp16"
 fi
 
+USE_EVAL_ITER=""
+if [ ${EVAL_ITER} != "" ]; then
+    USE_EVAL_ITER="--num_eval_iterations=${EVAL_ITER}"
+fi
+
 # run container
 docker_cmd="docker run --rm --name ${CONTAINER_NAME} \
     --net=host --ipc=host --uts=host --ulimit stack=67108864 --ulimit memlock=-1 \
     -e NVIDIA_VISIBLE_DEVICES=${GPU_IDX} \
-    -v /raid/datasets/bert_tf/:/data \
-    -v /raid/outputs:/${OUTPUT_DIR} \
+    -v ${DATA_DIR}:/data \
+    -v ${DATA_DIR}/outputs:/${OUTPUT_DIR} \
     ${DOCKER_IMAGE} sleep infinity"
 
 # finding optimal gemm algorithm from the given attention size
@@ -76,7 +82,7 @@ infer_cmd="docker exec -ti ${CONTAINER_NAME} \
             --predict_batch_size=${BATCH_SIZE} \
             --output_dir=${OUTPUT_DIR}   \
             --version_2_with_negative=${version_2_with_negative}
-            --num_eval_iterations=1000 \
+            ${USE_EVAL_ITER} \
             ${use_fp16} --use_xla"
 
 eval_cmd="docker exec -ti \
@@ -86,20 +92,19 @@ eval_cmd="docker exec -ti \
 # terminates container
 finish_cmd="docker rm -f ${CONTAINER_NAME}"
 
-echo $docker_cmd
+set -x
+
 $docker_cmd &
 sleep 2
-echo $init_cmd
 $init_cmd
-echo $infer_cmd
 $infer_cmd
 if [ ${DO_PROFILE} == 1 ]; then
     docker exec -ti ${CONTAINER_NAME} \
         mv "${PROFILE_FILENAME}.qdrep" "${OUTPUT_DIR}/${PROFILE_FILENAME}.qdrep"
 fi
 
-# echo $eval_cmd
 # $eval_cmd
-echo $finish_cmd
 $finish_cmd
+
+set +x
 
