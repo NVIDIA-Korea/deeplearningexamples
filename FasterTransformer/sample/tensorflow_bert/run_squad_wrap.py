@@ -14,46 +14,23 @@
 
 # usage example
 # export BERT_BASE_DIR=/path/to/bert/uncased_L-12_H-768_A-12
-# export GLUE_DIR=/path/to/glue
-# python run_classifier_wrap.py   --floatx=float16   --task_name=MRPC   --do_eval=true   --data_dir=$GLUE_DIR/MRPC   --vocab_file=$BERT_BASE_DIR/vocab.txt   --bert_config_file=$BERT_BASE_DIR/bert_config.json   --init_checkpoint=mrpc_output/fp16_model.ckpt   --max_seq_length=128   --eval_batch_size=8   --output_dir=mrpc_output
-
-# FP32 Tensorflow Transformer MRPC result
-# INFO:tensorflow:  eval_accuracy = 0.877451
-# INFO:tensorflow:  eval_loss = 0.44744828
-# INFO:tensorflow:  global_step = 0
-# INFO:tensorflow:  loss = 0.44744828
-
-# FP32 Faster Transformer MRPC result
-# INFO:tensorflow:  eval_accuracy = 0.877451
-# INFO:tensorflow:  eval_loss = 0.4474482
-# INFO:tensorflow:  global_step = 0
-# INFO:tensorflow:  loss = 0.4474482
-
-# FP16 Tensorflow Transformer MRPC result
-# INFO:tensorflow:  eval_accuracy = 0.875
-# INFO:tensorflow:  eval_loss = 0.44760832
-# INFO:tensorflow:  global_step = 0
-# INFO:tensorflow:  loss = 0.44760215
-
-# FP16 Faster Transformer MRPC result
-# INFO:tensorflow:  eval_accuracy = 0.875
-# INFO:tensorflow:  eval_loss = 0.44731623
-# INFO:tensorflow:  global_step = 0
-# INFO:tensorflow:  loss = 0.44728807
+# export SQUAD_DIR=/path/to/glue
+# python run_squad_wrap.py   --use_fp16   --task_name=MRPC   --do_eval=true   --data_dir=$GLUE_DIR/MRPC   --vocab_file=$BERT_BASE_DIR/vocab.txt   --bert_config_file=$BERT_BASE_DIR/bert_config.json   --init_checkpoint=mrpc_output/fp16_model.ckpt   --max_seq_length=128   --eval_batch_size=8   --output_dir=squad_output
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import sys
+import os
 import tensorflow as tf
 
+# bert_submodule = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bert')
 bert_submodule = "/opt/FasterTransformer/sample/tensorflow_bert"
 sys.path.insert(0, bert_submodule)
-import run_classifier as rc
-import fast_infer_util as fiu
 import my_modeling
+import fast_infer_util as fiu
+import run_squad
 
 flags = tf.flags
 FLAGS = flags.FLAGS
@@ -61,14 +38,11 @@ FLAGS = flags.FLAGS
 # replace transformer implementation
 my_modeling.transformer_model = fiu.transformer_model
 # replace the model to support fp16 data type
-rc.create_model = fiu.create_classifier_model
+run_squad.create_model = fiu.create_squad_model
 # replace the input function to drop remainderfile_based_input_fn_builder = fiu.file_based_input_fn_builder_drop
-main = rc.main
+main = run_squad.main
 
 if __name__ == "__main__":
-    flags.mark_flag_as_required("do_eval")
-    flags.mark_flag_as_required("data_dir")
-    flags.mark_flag_as_required("task_name")
     flags.mark_flag_as_required("vocab_file")
     flags.mark_flag_as_required("bert_config_file")
     flags.mark_flag_as_required("output_dir")

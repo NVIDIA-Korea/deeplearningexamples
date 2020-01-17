@@ -34,6 +34,13 @@ int main(int argc, char* argv[])
     printf("Cannot write to file gemm_config.in\n");
     return 0;
   }
+  if(argc != 5)
+  {
+    printf("./gemm_fp16 batch_size seq_len head_num size_per_head\n");
+    printf("e.g., ./gemm_fp16 1 128 12 64\n");
+    return 0;
+  }
+  
   struct cudaDeviceProp prop;
   cudaGetDeviceProperties(&prop, 0);
   printf("Device %s\n", prop.name);

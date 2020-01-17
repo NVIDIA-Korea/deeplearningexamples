@@ -28,3 +28,7 @@ target_link_libraries(gemm_fp32 PUBLIC -lcublas -lcudart ${CMAKE_THREAD_LIBS_INI
 add_executable(gemm_fp16 ${gemm_fp16_files})
 set_target_properties(gemm_fp16 PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 target_link_libraries(gemm_fp16 PUBLIC -lcublas -lcudart ${CMAKE_THREAD_LIBS_INIT})
+
+INSTALL ( TARGETS gemm_fp32 gemm_fp16 
+  RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+)

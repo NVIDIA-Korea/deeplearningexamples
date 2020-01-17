@@ -26,3 +26,9 @@ target_link_libraries(transformer_fp32 PUBLIC -lcublas -lcudart fastertransforme
 
 add_executable(transformer_fp16 ${transformer_fp16_files})
 target_link_libraries(transformer_fp16 PUBLIC -lcublas -lcudart fastertransformer ${CMAKE_THREAD_LIBS_INIT})
+
+INSTALL ( TARGETS transformer_fp32 transformer_fp16
+  RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+  LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+)

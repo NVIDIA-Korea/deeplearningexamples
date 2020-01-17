@@ -19,3 +19,7 @@ set(trt_files
 
 add_executable(transformer_trt ${trt_files})
 target_link_libraries(transformer_trt PRIVATE -lcublas -lcudart -lnvinfer fastertransformer ${CMAKE_THREAD_LIBS_INIT})
+
+INSTALL ( TARGETS transformer_trt
+  RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+)

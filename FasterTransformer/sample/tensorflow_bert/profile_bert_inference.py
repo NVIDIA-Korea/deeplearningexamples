@@ -20,21 +20,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
-import sys
-import numpy as np
-import fast_infer_util as fiu
-import profile_util
-import tensorflow as tf
 import os
-from tensorflow.python.client import timeline
-import contextlib
+import sys
 import time
+import numpy as np
+import contextlib
+import tensorflow as tf
+from tensorflow.python.client import timeline
 from tensorflow.python.client import device_lib
-import my_modeling
-bert_submodule = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bert')
+
+bert_submodule = "/opt/FasterTransformer/sample/tensorflow_bert"
 sys.path.insert(0, bert_submodule)
+import my_modeling
 import tokenization
+import profile_util
+import fast_infer_util as fiu
 import run_classifier as rc
 
 flags = tf.flags
@@ -73,9 +73,9 @@ def model_fn_builder(bert_config):
             bert_config, False, input_ids, input_mask, segment_ids)
 
         # # fetch mrpc logits for prediction
-        # num_labels = 2  # for mrpc
-        # _, _, fetches, _ = fiu.create_model(bert_config, False, input_ids, input_mask, segment_ids, label_ids,
-        # num_labels, False)
+        num_labels = 2  # for mrpc
+        _, _, fetches, _ = fiu.create_model(bert_config, False, input_ids, input_mask, segment_ids, label_ids,
+        num_labels, False)
 
         return fetches
 
@@ -179,6 +179,7 @@ def main(_):
 
 
 if __name__ == "__main__":
+    print(flags)
     flags.mark_flag_as_required("data_dir")
     flags.mark_flag_as_required("task_name")
     flags.mark_flag_as_required("vocab_file")

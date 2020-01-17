@@ -16,18 +16,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.client import device_lib
-import tensorflow as tf
 import os
 import sys
+import tensorflow as tf
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import device_lib
 from my_modeling import *
 
-build_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../build/lib')
+flags = tf.flags
+FLAGS = flags.FLAGS
+
+# build_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../build/lib')
+build_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '/usr/local/lib')
 
 transformer_op_module = tf.load_op_library(
     os.path.join(build_path, 'libtf_fastertransformer.so'))
-
 
 def file_based_input_fn_builder_drop(input_file, seq_length, is_training,
                                      drop_remainder):
@@ -79,10 +82,10 @@ def file_based_input_fn_builder_drop(input_file, seq_length, is_training,
 
     return input_fn
 
-
-def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
+def create_classifier_model(bert_config, is_training, input_ids, input_mask, segment_ids,
                  labels, num_labels, use_one_hot_embeddings):
   """Creates a classification model."""
+  print("create_classifer_model")
   model = BertModel(
       config=bert_config,
       is_training=is_training,
@@ -97,12 +100,12 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
 
   output_weights = tf.get_variable(
       "output_weights", [num_labels, hidden_size],
-      dtype=tf.flags.FLAGS.floatx,
+      dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
       initializer=tf.truncated_normal_initializer(stddev=0.02))
 
   output_bias = tf.get_variable(
-      "output_bias", [num_labels], 
-      dtype=tf.flags.FLAGS.floatx,
+      "output_bias", [num_labels],
+      dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
       initializer=tf.zeros_initializer())
 
   with tf.variable_scope("loss"):
@@ -115,30 +118,73 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
     probabilities = tf.nn.softmax(logits, axis=-1)
     log_probs = tf.nn.log_softmax(logits, axis=-1)
 
-    one_hot_labels = tf.one_hot(labels, depth=num_labels, dtype=tf.flags.FLAGS.floatx)
+    one_hot_labels = tf.one_hot(labels, depth=num_labels, dtype=tf.float16 if FLAGS.use_fp16 else tf.float32)
 
     per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
     loss = tf.reduce_mean(per_example_loss)
 
     return (loss, per_example_loss, logits, probabilities)
 
+def create_squad_model(bert_config, is_training, 
+                 input_ids, input_mask, segment_ids,
+                 use_one_hot_embeddings):
+    """Creates a squad model."""
+    model = BertModel(
+        config=bert_config,
+        is_training=is_training,
+        input_ids=input_ids,
+        input_mask=input_mask,
+        token_type_ids=segment_ids,
+        use_one_hot_embeddings=use_one_hot_embeddings)
+
+    final_hidden = model.get_sequence_output()
+
+    final_hidden_shape = get_shape_list(final_hidden, expected_rank=3)
+    batch_size = final_hidden_shape[0]
+    seq_length = final_hidden_shape[1]
+    hidden_size = final_hidden_shape[2]
+
+    tf.float16 if FLAGS.use_fp16 else tf.float32
+
+    output_weights = tf.get_variable(
+        "cls/squad/output_weights", [2, hidden_size],
+        dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
+        initializer=tf.truncated_normal_initializer(stddev=0.02))
+
+    output_bias = tf.get_variable(
+        "cls/squad/output_bias", [2], 
+        dtype=tf.float16 if FLAGS.use_fp16 else tf.float32,
+        initializer=tf.zeros_initializer())
+
+    final_hidden_matrix = tf.reshape(final_hidden,
+                                   [batch_size * seq_length, hidden_size])
+    logits = tf.matmul(final_hidden_matrix, output_weights, transpose_b=True)
+    logits = tf.nn.bias_add(logits, output_bias)
+
+    logits = tf.reshape(logits, [batch_size, seq_length, 2])
+    logits = tf.transpose(logits, [2, 0, 1])
+
+    unstacked_logits = tf.unstack(logits, axis=0, name='unstack')
+
+    (start_logits, end_logits) = (unstacked_logits[0], unstacked_logits[1])
+
+    return (start_logits, end_logits)
 
 def get_available_gpus():
     local_device_protos = device_lib.list_local_devices()
     return [x.name for x in local_device_protos if x.device_type == 'GPU']
 
-
-def fast_transformer_model_trans(input_tensor,
-                                 attention_mask=None,
-                                 hidden_size=768,
-                                 num_hidden_layers=12,
-                                 num_attention_heads=12,
-                                 intermediate_size=3072,
-                                 intermediate_act_fn=gelu,
-                                 hidden_dropout_prob=0.1,
-                                 attention_probs_dropout_prob=0.1,
-                                 initializer_range=0.02,
-                                 do_return_all_layers=False):
+def transformer_model(input_tensor,
+                        attention_mask=None,
+                        hidden_size=768,
+                        num_hidden_layers=12,
+                        num_attention_heads=12,
+                        intermediate_size=3072,
+                        intermediate_act_fn=gelu,
+                        hidden_dropout_prob=0.1,
+                        attention_probs_dropout_prob=0.1,
+                        initializer_range=0.02,
+                        do_return_all_layers=False):
     """ Re-implementation of transformer_model function from modeling.py from Google's BERT repository https://github.com/google-research/bert
         using FasterTransformer Tensorflow op.
 
@@ -189,6 +235,13 @@ def fast_transformer_model_trans(input_tensor,
     seq_length = input_shape[1]
     input_width = input_shape[2]
 
+    # transform batch_size to int32
+    _batch_size = 1
+    if FLAGS.do_eval:
+        _batch_size = FLAGS.eval_batch_size
+    if FLAGS.do_predict:
+        _batch_size = FLAGS.predict_batch_size
+
     # The Transformer performs sum residuals on all layers so the input needs
     # to be the same as the hidden size.
     if input_width != hidden_size:
@@ -238,10 +291,8 @@ def fast_transformer_model_trans(input_tensor,
                         attention_output,
                         hidden_size,
                         kernel_initializer=create_initializer(initializer_range))
-                    attention_output = dropout(
-                        attention_output, hidden_dropout_prob)
-                    attention_output = layer_norm(
-                        attention_output + layer_input)
+                    attention_output = dropout(attention_output, hidden_dropout_prob)
+                    attention_output = layer_norm(attention_output + layer_input)
 
             # The activation is only applied to the "intermediate" hidden layer.
             with tf.variable_scope("intermediate"):
@@ -260,7 +311,7 @@ def fast_transformer_model_trans(input_tensor,
                 layer_output = dropout(layer_output, hidden_dropout_prob)
                 layer_output = layer_norm(layer_output + attention_output)
 
-            # FASTINFER: fast transformer encoder inference
+            # FASTINFER: faster transformer encoder inference
             trainable_vars = tf.get_collection(
                 tf.GraphKeys.TRAINABLE_VARIABLES, scope=tf.get_variable_scope().name)
             layer_output = transformer_op_module.bert_transformer(
@@ -270,7 +321,7 @@ def fast_transformer_model_trans(input_tensor,
                 attention_mask,
                 trainable_vars[6], trainable_vars[7], trainable_vars[8], trainable_vars[9], trainable_vars[10], trainable_vars[11],
                 trainable_vars[12], trainable_vars[13], trainable_vars[14], trainable_vars[15],
-                batch_size=batch_size, from_seq_len=seq_length, to_seq_len=seq_length, head_num=num_attention_heads, size_per_head=attention_head_size)
+                batch_size=_batch_size, from_seq_len=seq_length, to_seq_len=seq_length, head_num=num_attention_heads, size_per_head=attention_head_size)
 
             prev_output = layer_output
             all_layer_outputs.append(layer_output)

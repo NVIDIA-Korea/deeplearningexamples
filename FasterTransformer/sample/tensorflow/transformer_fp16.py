@@ -18,11 +18,11 @@ import math
 import six
 from datetime import datetime
 import sys
-transformer_op_module = tf.load_op_library(os.path.join('./lib/libtf_fastertransformer.so'))
+transformer_op_module = tf.load_op_library(os.path.join('/usr/local/lib/libtf_fastertransformer.so'))
 
 if len(sys.argv) != 6:
-    print "python transformer_fp16.py batch_size num_layers seq_len head_num size_per_head"
-    print "e.g., python transformer_fp16.py 1 12 32 12 64"
+    print("python transformer_fp16.py batch_size num_layers seq_len head_num size_per_head")
+    print("e.g., python transformer_fp16.py 1 12 32 12 64")
     sys.exit(0)
 argumentList = sys.argv
 batch_size = int(sys.argv[1])
@@ -336,8 +336,8 @@ def transformer_own(input_tensor, params):
     out_tensor = transformer_single(in_tensor, params, layer_idx)
     in_tensor = out_tensor
   return in_tensor
-    
-output = transformer_model(input_tensor=from_tensor, 
+
+output = transformer_model(input_tensor=from_tensor,
   hidden_size = hidden_dim, num_attention_heads = head_num, attention_mask = attention_mask, num_hidden_layers = num_layers, do_return_all_layers=True)
 
 config = tf.ConfigProto()
@@ -347,14 +347,14 @@ with tf.Session(config=config) as sess:
 
     run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
     run_metadata = tf.RunMetadata()
-                 
+
     sess.run(output)
     Model_variables = tf.GraphKeys.GLOBAL_VARIABLES
 
     idx = 0
     all_vars = tf.get_collection(Model_variables)
     for var in all_vars:
-      print (str(idx) + " " + str(var.name) + " " + str(var.shape)) + " " + str(var.dtype)
+      print((str(idx) + " " + str(var.name) + " " + str(var.shape)) + " " + str(var.dtype))
       idx = idx + 1
 
     params = all_vars
@@ -366,9 +366,9 @@ with tf.Session(config=config) as sess:
     print("cross_check " + str(np.allclose(np_val1, np_val2, atol = 1e-1)))
     print("max diff " + str(np.fabs(np_val1 - np_val2).max()))
     print("min diff " + str(np.fabs(np_val1 - np_val2).min()))
-    print np_val1
-    print " "
-    print np_val2
+    print(np_val1)
+    print(" ")
+    print(np_val2)
 
     ite = 500
     time_sum = 0
