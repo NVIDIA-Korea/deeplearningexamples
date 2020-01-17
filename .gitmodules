@@ -6,6 +6,6 @@
     url = https://github.com/NVIDIA/tensorrt-inference-server.git
     branch = r19.06
 [submodule "TensorFlow/LanguageModeling/BERT/trt/TensorRT"]
-    path = TensorFlow/LanguageModeling/BERT/trt/TensorRT"
+    path = TensorFlow/LanguageModeling/BERT/trt/TensorRT
     url = https://github.com/haanjack/TensorRT.git
     branch = release/6.0
