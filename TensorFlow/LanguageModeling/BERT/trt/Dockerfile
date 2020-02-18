@@ -73,11 +73,13 @@ WORKDIR /workspace
 USER bert
 
 # Download TensorRT OSS
-#RUN git clone -b release/6.0 https://github.com/nvidia/TensorRT TensorRT && \
-#    cd TensorRT && \
-#    git submodule update --init --recursive
-#RUN git clone https://github.com/nvidia/cutlass /workspace/cutlass
-#RUN git clone https://github.com/NVLabs/cub     /workspace/cub
+RUN git clone -b release/6.0 https://github.com/nvidia/TensorRT TensorRT && \
+   cd TensorRT && \
+   git submodule update --init --recursive && \
+   mkdir -p demo/BERT/build && cd demo/BERT/build && \
+   cmake .. && \
+   make -j$(nproc) && \
+   tar -czf bert_plugin.tar.gz libbert_plugins.so libcommon.so
 
 # Return to project directory and open a terminal
 WORKDIR /workspace
